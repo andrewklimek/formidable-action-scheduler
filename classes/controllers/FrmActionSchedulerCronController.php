@@ -5,24 +5,26 @@
  */
 class FrmActionSchedulerCronController {
 
-	public static function maybe_do_queue( $pre=null ) {
+	public static function maybe_do_queue() {
 		
-		error_log(__FUNCTION__ . ' running.');
+		// error_log( __FUNCTION__ . ' running via '. current_filter() );
+		// if ( current_filter() === 'shutdown' ) return;
 		// pre_get_ready_cron_jobs is fired before sending the async cron request in spawn_cron (as a sanity check to bail if nothing is in queue)
 		// running this at that time would defeat the purpose - we want to run on the async call, so we wait for DOING_CRON to be defined.
-		if ( ! defined( 'DOING_CRON' ) ) {
-			error_log(__FUNCTION__ . " doing_cron not defined. exit.");
-			return $pre;
-		}
+		// if ( ! defined( 'DOING_CRON' ) ) {
+		// 	error_log(__FUNCTION__ . " doing_cron not defined. exit.");
+		// 	return $pre;
+		// }
 		
-		if ( time() < ( 60 + get_option( 'frm_action_scheduler_last_run', 0 ) ) ) {// TODO this might be limited to admins
-			error_log( __FUNCTION__ . " queue ran too recently" );
+		if ( time() < ( 60 + get_option( 'frm_action_scheduler_last_run', 0 ) ) ) {
+			// error_log( __FUNCTION__ . " queue ran too recently" );
 			return $pre;
 		}
 
-		self::do_queue();
+		self::send_async();
+		// self::do_queue();
 
-		return $pre;
+		return;
 	}
 
 

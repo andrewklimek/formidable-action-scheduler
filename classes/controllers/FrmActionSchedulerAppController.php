@@ -10,8 +10,8 @@ class FrmActionSchedulerAppController {
 
 	public static function init() {
 
-		// add_action( 'shutdown', 'FrmActionSchedulerCronController::maybe_do_queue' );
-		add_filter( 'pre_get_ready_cron_jobs', 'FrmActionSchedulerCronController::maybe_do_queue' );
+		add_action( 'shutdown', 'FrmActionSchedulerCronController::maybe_do_queue' );
+		// add_filter( 'pre_get_ready_cron_jobs', 'FrmActionSchedulerCronController::maybe_do_queue' );
 
 		// Important, if you add another listener to frm_trigger_email_action, make sure you
 		// remove it before actually doing that action in the run_action method
