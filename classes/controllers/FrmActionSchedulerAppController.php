@@ -25,7 +25,12 @@ class FrmActionSchedulerAppController {
 		 */
 		add_filter( 'frm_skip_form_action', __CLASS__ . '::check_all_actions', 10, 2 );
 		add_action( 'frm_after_update_entry', __CLASS__ . '::check_update_actions', 20 );
-		add_action( 'frm_before_destroy_entry', __CLASS__ . '::unschedule_all_events_for_entry' );
+
+		/**
+		 * This deletes any schedule items when an entry is deleted.
+		 * It works but its in needed when it would rarely be the case and it would get unscheduled when it tries to run and finds no entry available?
+		 */
+		// add_action( 'frm_before_destroy_entry', __CLASS__ . '::unschedule_all_events_for_entry' );
 
 		self::load_admin_hooks();
 
@@ -199,7 +204,7 @@ class FrmActionSchedulerAppController {
 	 *
 	 * Note, there's a bit of a gotcha in here.  The user can setup the autoresponder to trigger after the update date,
 	 * but if the notification itself is not setup to trigger off of the update event, then it'll never get here.
-	 * This is handles by 3 functions: check_all_actions() check_update_actions() unschedule_all_events_for_entry()
+	 * This is handled by 3 functions: check_all_actions() check_update_actions() maybe_unschedule_skipped_action()
 	 *
 	 * Second note: this does not actually send out the email.  This just schedules a cron job to send it out.
 	 *
@@ -472,6 +477,14 @@ class FrmActionSchedulerAppController {
 		global $wpdb;
 		$wpdb->get_results( "DELETE FROM {$wpdb->prefix}frm_actionscheduler_queue WHERE $where" );
 		error_log("unscheduled $wpdb->rows_affected items");// secret property
+	}
+
+
+	/**
+	 * Clear out all scheduled hooks for all actions for a deleted entry
+	 */
+	public static function unschedule_all_events_for_entry( $entry_id ) {
+		self::unschedule( compact( 'entry_id' ) );
 	}
 
 
