@@ -26,11 +26,26 @@ class FrmActionSchedulerCronController {
 	}
 
 
-	public static function do_queue() {
+	public static function do_queue( $actions = [] ) {
+
+		if ( !empty( $actions ) ) {
+			$in = [];
+			foreach( $actions as $action => $entry ) {
+				if ( ! is_numeric($entry) || ( ! is_numeric($action) && ! in_array($action, ['create','update','draft']) ) ) return;// data validation
+				$in[] = $action .'_'. $entry;
+			}
+		}
+		if ( !empty( $in ) ) {
+			$where = "WHERE action_entry IN ('" . implode( "', '", $in ) . "')";
+		} else {
+			$where = "WHERE time <= '" . date('Y-m-d H:i:s' ) . "'";
+		}
+
 		error_log(__FUNCTION__);
 		update_option( 'frm_action_scheduler_last_run', time(), true );
 		global $wpdb;
-		$items = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}frm_actionscheduler_queue WHERE time <= '" . date('Y-m-d H:i:s' ) . "' ORDER BY time ASC LIMIT 20");
+		$items = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}frm_actionscheduler_queue $where ORDER BY time ASC LIMIT 20");
+		error_log( $wpdb->last_query );
 		foreach ( $items as $item ) {
 			$action_entry = explode( '_', $item->action_entry );
 			FrmActionSchedulerAppController::run_action( $action_entry[1], $action_entry[0], $item->recheck );// $entry_id, $action_id, $recheck
@@ -45,22 +60,39 @@ class FrmActionSchedulerCronController {
 		session_write_close();
 
 		$result = check_ajax_referer( 'frm_actionscheduler_async', 'token' );
-		error_log("check_ajax_referer $result");
+		// error_log("check_ajax_referer $result");
 
-		self::do_queue();
+		$actions = !empty( $_POST['actions'] ) ? (array) $_POST['actions'] : [];
+
+		self::do_queue( $actions );
 
 		wp_die();
 	}
 
 
-	public static function send_async() {
+	public static function send_async( $entry_id = 0 ) {
 
+		$actions = [];
+		if ( $entry_id ) {
+			switch ( current_filter() ) {
+				case 'frm_after_create_entry':
+					$actions = [ "create" => $entry_id, "draft" => $entry_id ];
+					break;
+				case 'frm_after_update_entry':
+					$actions = [ "update" => $entry_id ];
+					break;
+				default:
+					$actions = [ "create" => $entry_id, "update" => $entry_id, "draft" => $entry_id ];
+					break;
+			}
+		}
 		$url = add_query_arg( [ 'action' => 'frm_actionscheduler_async', 'token' => wp_create_nonce( 'frm_actionscheduler_async' ) ], admin_url( 'admin-ajax.php' ) );
 		$args = [
-			'timeout'   => 0.01,
-			'blocking'  => false,
-			'sslverify' => apply_filters( 'https_local_ssl_verify', false ),
-			'cookies'   => $_COOKIE,
+			'timeout'	=> 0.01,
+			'blocking'	=> false,
+			'sslverify'	=> apply_filters( 'https_local_ssl_verify', false ),
+			'cookies'	=> $_COOKIE,
+			'body'		=> [ 'actions' => $actions ],
 		];
 		error_log($url);
 		return wp_remote_post( $url, $args );
@@ -90,8 +122,8 @@ class FrmActionSchedulerCronController {
 		// trigger an async request to run these right away
 		// I guess these should be set on the same hooks and priorities so the timing will be sort of similar... probably still ruined if trying to modify data after this point.
 		// add_action( 'shutdown', __CLASS__ . '::send_async' );
-		add_action( 'frm_after_create_entry', __CLASS__ . '::send_async', 20 );
-		add_action( 'frm_after_update_entry', __CLASS__ . '::send_async', 10 );
+		add_action( 'frm_after_create_entry', __CLASS__ . '::send_async', 20, 1 );
+		add_action( 'frm_after_update_entry', __CLASS__ . '::send_async', 10, 1 );
 		// add_action( 'shutdown', 'spawn_cron' );
 		// add_action( 'frm_after_create_entry', 'spawn_cron', 20 );
 		// add_action( 'frm_after_update_entry', 'spawn_cron', 10 );
