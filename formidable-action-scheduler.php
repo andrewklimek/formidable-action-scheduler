@@ -15,12 +15,6 @@ function load_frm_action_scheduler() {
 	FrmActionSchedulerAppController::init();
 }
 
-if ( ! function_exists( 'load_frm_autoresponder' ) ) {
-	function load_frm_autoresponder(){
-		// stop adding the disabled "setup automation" button in form actions that triggers an upgrade prompt
-	}
-}
-
 register_activation_hook( __FILE__, 'frm_action_scheduler_activation' );
 
 function frm_action_scheduler_activation() {

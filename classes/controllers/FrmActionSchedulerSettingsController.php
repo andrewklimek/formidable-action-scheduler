@@ -78,6 +78,12 @@ class FrmActionSchedulerSettingsController {
 			$path = 'resources/js/frm-action-scheduler-admin.js';
 			wp_enqueue_script( 'frm-action-scheduler-admin', FrmActionSchedulerHelper::plugin_url( $path ), ['formidable_admin'], '1', true );
 		}
+
+		if ( ! function_exists( 'load_frm_autoresponder' ) ) {
+			function load_frm_autoresponder(){
+				// stop adding the disabled "setup automation" button in form actions that triggers an upgrade prompt
+			}
+		}
 	}
 
 	/**
