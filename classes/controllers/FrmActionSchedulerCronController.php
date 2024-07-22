@@ -18,8 +18,9 @@ class FrmActionSchedulerCronController {
 		
 		if ( time() < ( 60 + get_option( 'frm_action_scheduler_last_run', 0 ) ) ) {
 			// error_log( __FUNCTION__ . " queue ran too recently" );
-			return $pre;
+			return;
 		}
+		update_option( 'frm_action_scheduler_last_run', time(), true );
 
 		self::send_async();
 		// self::do_queue();
@@ -44,7 +45,6 @@ class FrmActionSchedulerCronController {
 		}
 
 		error_log(__FUNCTION__);
-		update_option( 'frm_action_scheduler_last_run', time(), true );
 		global $wpdb;
 		$items = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}frm_actionscheduler_queue $where ORDER BY time ASC LIMIT 20");
 		error_log( $wpdb->last_query );
