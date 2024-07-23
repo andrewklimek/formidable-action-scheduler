@@ -10,7 +10,7 @@ class FrmActionSchedulerAppController {
 
 	public static function init() {
 
-		add_action( 'shutdown', 'FrmActionSchedulerCronController::maybe_do_queue' );
+		add_action( 'wp_loaded', 'FrmActionSchedulerCronController::maybe_do_queue' );
 		// add_filter( 'pre_get_ready_cron_jobs', 'FrmActionSchedulerCronController::maybe_do_queue' );
 
 		// Important, if you add another listener to frm_trigger_email_action, make sure you
@@ -18,13 +18,6 @@ class FrmActionSchedulerAppController {
 		foreach ( FrmActionSchedulerHelper::allowed_actions() as $action ) {
 			self::load_hooks( $action );
 		}
-
-		/**
-		 * I believe these are all just to handle a dumb case where a scheduler setting is based on update time, but the actual action is not triggered on update
-		 * Not sure it's neccessary, it does give the "just updated" plugin extra work to do.
-		 */
-		add_filter( 'frm_skip_form_action', __CLASS__ . '::check_all_actions', 10, 2 );
-		add_action( 'frm_after_update_entry', __CLASS__ . '::check_update_actions', 20 );
 
 		/**
 		 * This deletes any schedule items when an entry is deleted.
@@ -41,6 +34,15 @@ class FrmActionSchedulerAppController {
 
 			add_action( 'wp_ajax_frm_actionscheduler_async', 'FrmActionSchedulerCronController::ajax_do_queue' );
 			add_action( 'wp_ajax_nopriv_frm_actionscheduler_async', 'FrmActionSchedulerCronController::ajax_do_queue' );
+		} else {
+			/**
+			 * TODO: can these work with the deferred run_all_actions() ?
+			 * 
+			 * I believe these are all just to handle a dumb case where a scheduler setting is based on update time, but the actual action is not triggered on update
+			 * Not sure it's neccessary, it does give the "just updated" plugin extra work to do.
+			 */
+			add_filter( 'frm_skip_form_action', __CLASS__ . '::check_all_actions', 10, 2 );
+			add_action( 'frm_after_update_entry', __CLASS__ . '::check_update_actions', 20 );
 		}
 	}
 
@@ -281,7 +283,7 @@ class FrmActionSchedulerAppController {
 	/**
 	 * Given the reference date, which is anything that passes strtotime(), and the settings, calculate the next trigger timestamp.
 	 *
-	 * @param string $reference_date any date that satisfies strtotime().  For example, YYYY-mm-dd
+	 * @param string $reference_date any date that satisfies strtotime(), unix timestamp, or null for now
 	 * @param array  $atts
 	 *               - entry
 	 *               - autoresponder  the settings for this particular autoresponder.  We pay attention to
@@ -292,12 +294,11 @@ class FrmActionSchedulerAppController {
 	 *
 	 * @return int|boolean a timestamp if all is good, false if $reference_date does not translate to a date
 	 */
-	public static function calculate_trigger_timestamp( $reference_date, $a ) {
+	public static function calculate_trigger_timestamp( $reference_date=null, $a=[] ) {
 		$autoresponder = $a['autoresponder'];
-		$reference_ts = strtotime( $reference_date );
-		if ( ! $reference_ts ) {
-			return false;
-		}
+		$reference_ts = $reference_date ? ( is_numeric( $reference_date ) ? $reference_date : strtotime( $reference_date ) ) : time();
+		if ( ! $reference_ts ) return false;
+		$reference_ts = intval( round( $reference_ts / 60 ) * 60 );// make it an even minute
 
 		if ( !in_array( $autoresponder['send_before_after'], [ 'before', 'after' ] ) ) return false;
 		if ( !in_array( $autoresponder['send_unit'], [ 'minutes', 'hours', 'days', 'months', 'years' ] ) ) return false;
@@ -347,29 +348,23 @@ class FrmActionSchedulerAppController {
 	 */
 	public static function run_action( $entry_id, $action_id, $recheck ) {
 
+		self::unschedule( compact( 'entry_id', 'action_id' ) );
+
 		$entry = FrmEntry::getOne( $entry_id, true );
-		if ( empty( $entry ) ) {
-			self::unschedule( compact( 'entry_id', 'action_id' ) );
-			return;
-		}
+		if ( empty( $entry ) ) return;
 
 		if ( in_array( $action_id, [ 'update', 'create', 'draft' ] ) ) {
 			self::run_all_actions( $entry_id, $action_id, $entry->form_id );
-			self::unschedule( compact( 'entry_id', 'action_id' ) );
 			return;
 		}
-// error_log( __FUNCTION__ );
+
 		$action = FrmActionScheduler::get_action( $action_id );
 		$autoresponder = FrmActionScheduler::get_autoresponder( $action );
-		if ( empty( $autoresponder ) ) {
-			self::unschedule( compact( 'entry_id', 'action_id' ) );
-			return;
-		}
+		if ( empty( $autoresponder ) ) return;
 
 		// action_conditions_met actually returns false if conditions are met.  it returns boolean "stop" value
 		if ( $recheck && FrmFormAction::action_conditions_met( $action, $entry ) ) {
 			self::debug( sprintf( 'Conditions for "%s" action for entry #%d not met. Halting.', $action->post_title, $entry->id, date( 'Y-m-d H:i:s' ) ), $action );
-			self::unschedule( compact( 'entry_id', 'action_id' ) );
 			return;
 		}
 
@@ -380,7 +375,6 @@ class FrmActionSchedulerAppController {
 			$sent_count = self::get_run_count( $entry_id, $action_id );
 			if ( $autoresponder['send_after_limit'] && $sent_count >= $autoresponder['send_after_count'] ) {
 				self::debug( sprintf( 'Not triggering $s because there we have already sent out the limit of %d.', $action->post_excerpt, $sent_count ), $action );
-				self::unschedule( compact( 'entry_id', 'action_id' ) );
 				return;
 			}
 			$sent_count++;
@@ -403,20 +397,12 @@ class FrmActionSchedulerAppController {
 			if ( ! $autoresponder['send_after_limit'] || $sent_count < $autoresponder['send_after_count'] ) {
 				$after_settings = self::get_repeat_settings( $autoresponder, $entry );
 
-				$reference_date = date( 'Y-m-d H:i:s' );
-				$trigger_ts = self::calculate_trigger_timestamp( $reference_date, array( 'autoresponder' => $after_settings, 'entry' => $entry ) );
-
-				$trigger_ts = apply_filters( 'formidable_autoresponder_trigger_timestamp', $trigger_ts, $reference_date, $entry, $action, 'followup' ); // 'followup' means this is a followup autoresponder
+				$trigger_ts = self::calculate_trigger_timestamp( time(), array( 'autoresponder' => $after_settings, 'entry' => $entry ) );
 
 				$recheck = $autoresponder['recheck'] == 'no' ? false : true;// default to rechecking repeat events unless explicitly set to No
 
-				self::schedule( $action, $entry_id, $trigger_ts, $recheck, 'update' );
+				self::schedule( $action, $entry_id, $trigger_ts, $recheck );
 			}
-		}
-
-		// finally remove item from queue if it was not rescheduled ( which would have set $trigger_ts )
-		if ( !isset( $trigger_ts ) ) {
-			self::unschedule( compact( 'entry_id', 'action_id' ) );
 		}
 
 		// replace actions for other responders
@@ -437,9 +423,44 @@ class FrmActionSchedulerAppController {
 	public static function add_to_log( $entry_id, $action_id, $sent_count ) {
 		global $wpdb;
 		$data =[ 'entry' => $entry_id, 'action' => $action_id, 'time' => date('Y-m-d H:i:s'), 'count' => $sent_count ];
-		error_log(var_export($data,1));
+		// error_log(var_export($data,1));// TODO wordpress seems to convert NULL to '' if it really matters
 		$wpdb->get_results( "INSERT INTO {$wpdb->prefix}frm_actionscheduler_logs (". implode(", ", array_keys($data)) .") VALUES ('". implode("', '", $data) ."');" );
-		error_log(var_export($wpdb->last_query,1));
+		// error_log(var_export($wpdb->last_query,1));
+	}
+
+
+	public static function track_lowest_timestamp( $new=0 ) {
+		static $current = 0;
+		if ( $new ) {
+			if ( ! $current ) {
+				add_action( 'shutdown', __CLASS__ . '::maybe_update_next_run', 11 );
+				$current = $new;
+			} elseif ( $new < $current ) {
+				$current = $new;
+			}
+			error_log( __FUNCTION__ ." current: $current new: $new");
+		}
+		return (int) $current;
+	}
+
+
+	public static function maybe_update_next_run() {
+		global $wpdb;
+		$new = self::track_lowest_timestamp();
+		error_log( __FUNCTION__ ." - new: $new");
+		if ( ! $new ) return;
+		$current = get_option( 'frm_action_scheduler_next_run', 'init' );
+		error_log( __FUNCTION__ ." - cur: $current");
+		if ( 'init' === $current ) {
+			$wpdb->insert( $wpdb->prefix .'options', [ 'option_name' => 'frm_action_scheduler_next_run', 'option_value' => $new, 'autoload' => 'yes' ] );
+		} elseif ( ! $current ) {
+			FrmActionSchedulerCronController::set_next_run();// option got clear, probably because nothing to schedule next last time, but safest to reset it.
+		} elseif ( $new < $current ) {
+			error_log("updating frm_action_scheduler_next_run because $new is < $current");
+			FrmActionSchedulerCronController::set_next_run( $new );
+		} else {
+			error_log("not updating next run");
+		}
 	}
 
 
@@ -450,13 +471,20 @@ class FrmActionSchedulerAppController {
 	 * The action_entry combo is the unique index of this db table, so inserting will fail if there's already a scheduled item for the same entry & action.
 	 * This is probably ideal behaviour, so using IGNORE to fire warnign instead of error when trying and failing to insert duplicate key
 	 */
-	public static function schedule( $action, $entry_id, $timestamp, $recheck_conditionals=true, $update=false ) {
-		// error_log(__FUNCTION__);
+	public static function schedule( $action, $entry_id, $timestamp=null, $recheck_conditionals=true, $update=false ) {
 
 		if ( is_object( $action ) ) {// if not object, it is an event type string (update, create, draft) for running all actions
 			self::debug( sprintf( 'Scheduling "%s" action for entry #%d for %s', $action->post_title, $entry_id, date( 'Y-m-d H:i:s', $timestamp ) ), $action );
 			$action = $action->ID;
 		}
+		
+		error_log(__FUNCTION__ . "() action $action entry: $entry_id");
+
+		// tracking time stamp VS doign cron when its always updated...not sure if this is the best way or overly complicated
+		if ( $timestamp && ! defined( 'DOING_FRM_ACTION_SCHEDULER_QUEUE' ) ) self::track_lowest_timestamp( $timestamp );
+
+		$timestamp = $timestamp ? (int) $timestamp : time();
+
 		global $wpdb;
 		$data = [
 			'action_entry' => $action .'_'. $entry_id,
@@ -465,6 +493,7 @@ class FrmActionSchedulerAppController {
 		];
 		$cmd = $update ? "REPLACE" : "INSERT IGNORE";
 		$wpdb->get_results( "{$cmd} INTO {$wpdb->prefix}frm_actionscheduler_queue (". implode(", ", array_keys($data)) .") VALUES ('". implode("', '", $data) ."');" );
+
 	}
 
 
@@ -476,7 +505,7 @@ class FrmActionSchedulerAppController {
 		else return 0;
 		global $wpdb;
 		$wpdb->get_results( "DELETE FROM {$wpdb->prefix}frm_actionscheduler_queue WHERE $where" );
-		error_log("unscheduled $wpdb->rows_affected items");// secret property
+		// error_log("unscheduled $wpdb->rows_affected items");// secret property
 	}
 
 
