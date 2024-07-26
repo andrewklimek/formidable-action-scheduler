@@ -29,7 +29,7 @@ class FrmActionScheduler {
 	 * @return array
 	 */
 	public static function get_default_autoresponder() {
-		$defaults = array(
+		$defaults = [
 			'is_active'                 => true,
 			'do_default_trigger'        => 'no',
 			'recheck'                   => null,
@@ -45,12 +45,12 @@ class FrmActionScheduler {
 			'send_after_interval_type'  => null,
 			'send_after_interval_field' => null,
 			'debug'                     => false,
-		);
+		];
 		return apply_filters( 'formidable_autoresponder_defaults', $defaults );
 	}
 	
 	public static function get_blank_autoresponder_array() {
-		$defaults = array(
+		$defaults = [
 			'is_active'                 => '',
 			'do_default_trigger'        => '',
 			'recheck'                   => '',
@@ -66,7 +66,7 @@ class FrmActionScheduler {
 			'send_after_interval_type'  => '',
 			'send_after_interval_field' => '',
 			'debug'                     => '',
-		);
+		];
 		return $defaults;
 	}
 
@@ -105,6 +105,7 @@ class FrmActionScheduler {
 		if ( $action && isset( $action->post_content['autoresponder'] ) ) {
 			$settings = $action->post_content['autoresponder'];
 			if ( $settings['is_active'] ){
+				if ( $settings['send_date'] === 'create' ) $settings['send_date'] = 'update';// migrate
 				$defaults = self::get_default_autoresponder();
 				$responder = array_merge( $defaults, $settings );
 			}

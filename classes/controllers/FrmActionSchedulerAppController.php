@@ -26,24 +26,13 @@ class FrmActionSchedulerAppController {
 
 		FrmActionSchedulerCronController::init();
 
-		// usinf cron.php now because it's faster to hang up
+		// using cron.php now because it's faster to hang up
 		// add_action( 'wp_ajax_frm_actionscheduler_async', 'FrmActionSchedulerCronController::ajax_do_queue' );
 		// add_action( 'wp_ajax_nopriv_frm_actionscheduler_async', 'FrmActionSchedulerCronController::ajax_do_queue' );
 
 		if ( get_option('frm_action_scheduler_defer_all', 0) ) {
-
 			add_action( 'frm_after_create_entry', __CLASS__ . '::defer_create_actions', 0, 3 );
 			add_action( 'frm_after_update_entry', __CLASS__ . '::defer_update_actions', 0, 2 );
-
-		} else {
-			/**
-			 * TODO: can these work with the deferred run_all_actions() ?
-			 * 
-			 * I believe these are all just to handle a dumb case where a scheduler setting is based on update time, but the actual action is not triggered on update
-			 * Not sure it's neccessary, it does give the "just updated" plugin extra work to do.
-			 */
-			add_filter( 'frm_skip_form_action', __CLASS__ . '::check_all_actions', 10, 2 );
-			add_action( 'frm_after_update_entry', __CLASS__ . '::check_update_actions', 20 );
 		}
 	}
 
@@ -51,14 +40,14 @@ class FrmActionSchedulerAppController {
 	private static function load_hooks( $action ) {
 		add_action( 'frm_trigger_' . $action . '_action', __CLASS__ . '::pre_trigger_scheduler', 2 );
 		add_action( 'frm_trigger_' . $action . '_action', __CLASS__ . '::post_trigger_scheduler', 1000 );
-		add_action( 'frm_trigger_' . $action . '_action', __CLASS__ . '::trigger_scheduler', 10, 2 );
+		add_action( 'frm_trigger_' . $action . '_action', __CLASS__ . '::trigger_scheduler', 10, 4 );
 	}
 
 
 	private static function unload_hooks( $action ) {
 		remove_action( 'frm_trigger_' . $action . '_action', __CLASS__ . '::pre_trigger_scheduler', 2 );
 		remove_action( 'frm_trigger_' . $action . '_action', __CLASS__ . '::post_trigger_scheduler', 1000 );
-		remove_action( 'frm_trigger_' . $action . '_action', __CLASS__ . '::trigger_scheduler', 10, 2 );
+		remove_action( 'frm_trigger_' . $action . '_action', __CLASS__ . '::trigger_scheduler', 10, 4 );
 	}
 
 
@@ -78,68 +67,6 @@ class FrmActionSchedulerAppController {
 		add_action( 'frm_add_settings_section', $class . '::add_settings_section' );
 	}
 
-
-	/**
-	 * Keep record of all actions just in case the logic or triggers aren't met.
-	 * This will allow us to stop scheduled events when logic is not met.
-	 */
-	public static function check_all_actions( $skip, $a ) {
-		if ( $a['event'] == 'update' && FrmActionSchedulerHelper::is_allowed_action( $a['action']->post_excerpt ) ) {
-			// error_log( __FUNCTION__ );
-			if ( FrmActionScheduler::get_autoresponder( $a['action'] ) ) {
-				self::add_action_to_global( $a );
-			}
-		}
-		return $skip;
-	}
-
-
-	/**
-	 * After the entry is updated, run checks for actions that didn't trigger
-	 */
-	public static function check_update_actions( $entry_id ) {
-		global $frm_vars;
-		if ( isset( $frm_vars['action_check'] ) ) {
-			foreach ( $frm_vars['action_check'] as $action_info ) {
-				self::maybe_unschedule_skipped_action( $action_info, $entry_id );
-			}
-		}
-	}
-
-
-	private static function maybe_unschedule_skipped_action( $a, $entry_id ) {
-		$entry = $a['entry'];
-		if ( ! is_object( $entry ) ) {
-			$entry = FrmEntry::getOne( $entry, true );
-		}
-
-		if ( $entry->id == $entry_id ) {
-			$conditions_not_met = FrmFormAction::action_conditions_met( $a['action'], $entry );
-			if ( $conditions_not_met ) {
-				// This unschedule doesnt seem necessary, and it needs to respect the recheck option so disabling for now
-				// self::unschedule( ['entry_id' => $entry->id, 'action_id' => $a['action']->ID ] );
-			} else {
-				// If we get here, the event is an update, the conditions were met, and there is an scheduler setting...
-				// but the action itself isn't set to trigger on update so the normal hook that runs trigger_scheduler didn't fire
-				self::trigger_scheduler( $a['action'], $entry );
-			}
-		}
-	}
-
-
-	private static function add_action_to_global( $a ) {
-		global $frm_vars;
-		if ( ! isset( $frm_vars['action_check'] ) ) $frm_vars['action_check'] = [];
-		$frm_vars['action_check'][ $a['action']->ID ] = $a;
-	}
-
-
-	private static function remove_action_from_global( $a ) {
-		global $frm_vars;
-		if ( isset( $frm_vars['action_check'][ $a['action']->ID ] ) ) {
-			unset( $frm_vars['action_check'][ $a['action']->ID ] );
-		}
-	}
 
 	/**
 	 * Defer All Actions
@@ -184,9 +111,6 @@ class FrmActionSchedulerAppController {
 	public static function pre_trigger_scheduler( $action ) {
 		// error_log( __FUNCTION__ );
 		if ( $autoresponder = FrmActionScheduler::get_autoresponder( $action ) ) {
-			// the conditions are met, so it's already handled from here
-			self::remove_action_from_global( compact( 'action' ) );
-
 			// It has an autoresponder component to the notification.  Is it set to ignore the default action?
 			if ( $autoresponder['do_default_trigger'] == 'no' ) {
 				if ( $action->post_excerpt == 'email' ) {
@@ -245,7 +169,7 @@ class FrmActionSchedulerAppController {
 	 *
 	 * @return void
 	 */
-	public static function trigger_scheduler( $action, $entry ) {
+	public static function trigger_scheduler( $action, $entry, $form, $event ) {
 
 		// TODO is this needed, and if so shouldnt it be after get_autoresponder check?
 		// self::unschedule( [ 'entry_id' => $entry->id, 'action_id' => $action->ID ] );
@@ -254,7 +178,7 @@ class FrmActionSchedulerAppController {
 		$autoresponder = FrmActionScheduler::get_autoresponder( $action );
 		if ( ! $autoresponder ) return;
 
-		$reference_date = self::get_trigger_date( compact( 'entry', 'action', 'autoresponder' ) );
+		$reference_date = self::get_trigger_date( compact( 'entry', 'action', 'autoresponder', 'event' ) );
 		if ( empty( $reference_date ) ) return;
 
 		$trigger_ts = self::calculate_trigger_timestamp( $reference_date, compact( 'autoresponder', 'entry' ) );
@@ -291,7 +215,7 @@ class FrmActionSchedulerAppController {
 				$reference_date = $a['entry']->metas[ $send_date ];
 				self::localize_date( $reference_date, $a );
 			}
-		} elseif ( $send_date == 'update' ) {
+		} elseif ( $a['event'] == 'update' ) {
 			$reference_date = $a['entry']->updated_at;
 		} else {
 			$reference_date = $a['entry']->created_at;

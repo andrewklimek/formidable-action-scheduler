@@ -37,9 +37,7 @@ if ( get_option('frm_action_scheduler_debug' ) ) echo "<style>.frm-autoresponder
 			<?php endforeach; ?>	
 		</select>
 		<select class="frm_autoresponder_date_field" name="<?php echo esc_attr( $input_name ); ?>[send_date]">
-			<option value="">Select Field</option>
-			<option value="create" <?php selected( 'create', $autoresponder['send_date'] ); ?>><?php _e( 'Create Date' ) ?></option>
-			<option value="update" <?php selected( 'update', $autoresponder['send_date'] ); ?>><?php _e( 'Update Date' ) ?></option>
+			<option value="update" <?php selected( 'update', $autoresponder['send_date'] ); ?>>Create / Update Date</option>
 			<?php
 			foreach ( $date_fields as $field ) :
 				?>
