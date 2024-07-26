@@ -5,7 +5,40 @@
  */
 class FrmActionSchedulerCronController {
 
-	public static function maybe_do_queue() {
+
+	public static function init() {
+
+		$alt_cron = false;
+		if ( $alt_cron ) {
+			add_action( 'wp_loaded', __CLASS__ . '::alt_cron' );
+		} else {
+			add_action( 'frm_actionscheduler_cron_hook', __CLASS__ . '::do_queue' );
+			add_filter( 'cron_schedules', __CLASS__ . '::add_cron_schedule', 9 );
+			add_action( 'frm_actionscheduler_after_schedule', __CLASS__ . '::schedule_recurring_cron', 10, 1 );
+			// self::schedule_recurring_cron();
+		}
+	}
+
+
+	public static function schedule_recurring_cron( $action ) {
+		if ( ! is_numeric( $action ) ) return;
+		if ( ! wp_next_scheduled( 'frm_actionscheduler_cron_hook' ) ) {
+			$time = intval( ceil( time() / 60 ) * 60 );// make it an even minute
+			wp_schedule_event( $time, 'five_minutes', 'frm_actionscheduler_cron_hook' );
+		}
+	}
+
+
+	public static function add_cron_schedule( $schedules ) {
+
+		$schedules[ 'five_minutes' ] = [
+			'interval' => 300,
+			'display'  => 'Every 5 minutes',
+		];
+		return $schedules;
+	}
+
+	public static function alt_cron() {
 
 		if ( defined( 'DOING_AJAX' ) ) return;
 
@@ -90,7 +123,9 @@ class FrmActionSchedulerCronController {
 		error_log(__FUNCTION__);
 		global $wpdb;
 		$items = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}frm_actionscheduler_queue $where ORDER BY time ASC LIMIT 30");
+		if ( ! $items ) return;
 		error_log( $wpdb->last_query );
+
 		foreach ( $items as $item ) {
 			error_log( "doing: " . $item->action_entry );
 			$action_entry = explode( '_', $item->action_entry );
@@ -104,6 +139,16 @@ class FrmActionSchedulerCronController {
 			self::set_next_run();
 			// error_log('do_queue: delete frm_action_scheduler_running');
 			// delete_transient( 'frm_action_scheduler_running' );
+
+			// TESTING CONSISTENCY
+			$next_run = get_option( 'frm_action_scheduler_next_run', 0 );
+			if ( $next_run ) {
+				if ( strtotime( $items[0]->time ) == (int) $next_run ) {
+					error_log( 'frm_action_scheduler_next_run was correct' );
+				} else {
+					error_log( "frm_action_scheduler_next_run was mismatched: {$items[0]->time} vs " . date("Y-m-d H:i:s", $next_run ) );
+				}
+			}
 		}
 	}
 
@@ -194,37 +239,6 @@ class FrmActionSchedulerCronController {
 
 		error_log( 'ajax send took ' . (microtime(1) - $timer) );
 		return $result;
-	}
-
-
-
-	public static function defer_create_actions( $entry_id, $form_id, $args = array() ) {
-		$args['entry_id'] = $entry_id;
-		$args['form_id']  = $form_id;
-		$event = apply_filters( 'frm_trigger_create_action', 'create', $args );
-		FrmActionSchedulerAppController::schedule( $event, $entry_id );
-		self::remove_trigger_hooks();
-	}
-
-	public static function defer_update_actions( $entry_id, $form_id ) {
-		$event = apply_filters( 'frm_trigger_update_action', 'update', [ 'entry_id' => $entry_id ] );
-		FrmActionSchedulerAppController::schedule( $event, $entry_id );
-		self::remove_trigger_hooks();
-	}
-
-	public static function remove_trigger_hooks() {
-		remove_action( 'frm_after_create_entry', 'FrmFormActionsController::trigger_create_actions', 20 );// 3
-		remove_action( 'frm_after_create_entry', 'FrmProFormActionsController::trigger_draft_actions', 10 );// 2
-		remove_action( 'frm_after_update_entry', 'FrmProFormActionsController::trigger_update_actions', 10 );// 2
-
-		// trigger an async request to run these right away
-		// I guess these should be set on the same hooks and priorities so the timing will be sort of similar... probably still ruined if trying to modify data after this point.
-		// add_action( 'shutdown', __CLASS__ . '::send_async' );
-		add_action( 'frm_after_create_entry', __CLASS__ . '::send_async', 20, 1 );
-		add_action( 'frm_after_update_entry', __CLASS__ . '::send_async', 10, 1 );
-		// add_action( 'shutdown', 'spawn_cron' );
-		// add_action( 'frm_after_create_entry', 'spawn_cron', 20 );
-		// add_action( 'frm_after_update_entry', 'spawn_cron', 10 );
 	}
 
 }

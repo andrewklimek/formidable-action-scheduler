@@ -10,9 +10,6 @@ class FrmActionSchedulerAppController {
 
 	public static function init() {
 
-		add_action( 'wp_loaded', 'FrmActionSchedulerCronController::maybe_do_queue' );
-		// add_filter( 'pre_get_ready_cron_jobs', 'FrmActionSchedulerCronController::maybe_do_queue' );
-
 		// Important, if you add another listener to frm_trigger_email_action, make sure you
 		// remove it before actually doing that action in the run_action method
 		foreach ( FrmActionSchedulerHelper::allowed_actions() as $action ) {
@@ -27,13 +24,17 @@ class FrmActionSchedulerAppController {
 
 		self::load_admin_hooks();
 
+		FrmActionSchedulerCronController::init();
+
+		// usinf cron.php now because it's faster to hang up
+		// add_action( 'wp_ajax_frm_actionscheduler_async', 'FrmActionSchedulerCronController::ajax_do_queue' );
+		// add_action( 'wp_ajax_nopriv_frm_actionscheduler_async', 'FrmActionSchedulerCronController::ajax_do_queue' );
+
 		if ( get_option('frm_action_scheduler_defer_all', 0) ) {
 
-			add_action( 'frm_after_create_entry', 'FrmActionSchedulerCronController::defer_create_actions', 0, 3 );
-			add_action( 'frm_after_update_entry', 'FrmActionSchedulerCronController::defer_update_actions', 0, 2 );
+			add_action( 'frm_after_create_entry', __CLASS__ . '::defer_create_actions', 0, 3 );
+			add_action( 'frm_after_update_entry', __CLASS__ . '::defer_update_actions', 0, 2 );
 
-			add_action( 'wp_ajax_frm_actionscheduler_async', 'FrmActionSchedulerCronController::ajax_do_queue' );
-			add_action( 'wp_ajax_nopriv_frm_actionscheduler_async', 'FrmActionSchedulerCronController::ajax_do_queue' );
 		} else {
 			/**
 			 * TODO: can these work with the deferred run_all_actions() ?
@@ -138,6 +139,35 @@ class FrmActionSchedulerAppController {
 		if ( isset( $frm_vars['action_check'][ $a['action']->ID ] ) ) {
 			unset( $frm_vars['action_check'][ $a['action']->ID ] );
 		}
+	}
+
+	/**
+	 * Defer All Actions
+	 */
+	public static function defer_create_actions( $entry_id, $form_id, $args = array() ) {
+		$args['entry_id'] = $entry_id;
+		$args['form_id']  = $form_id;
+		$event = apply_filters( 'frm_trigger_create_action', 'create', $args );
+		self::schedule( $event, $entry_id );
+		self::remove_trigger_hooks();
+	}
+
+	public static function defer_update_actions( $entry_id, $form_id ) {
+		$event = apply_filters( 'frm_trigger_update_action', 'update', [ 'entry_id' => $entry_id ] );
+		self::schedule( $event, $entry_id );
+		self::remove_trigger_hooks();
+	}
+
+	public static function remove_trigger_hooks() {
+		remove_action( 'frm_after_create_entry', 'FrmFormActionsController::trigger_create_actions', 20 );// 3
+		remove_action( 'frm_after_create_entry', 'FrmProFormActionsController::trigger_draft_actions', 10 );// 2
+		remove_action( 'frm_after_update_entry', 'FrmProFormActionsController::trigger_update_actions', 10 );// 2
+
+		// trigger an async request to run these right away
+		// I guess these should be set on the same hooks and priorities so the timing will be sort of similar... probably still ruined if trying to modify data after this point.
+		// add_action( 'shutdown', 'FrmActionSchedulerCronController::send_async' );
+		add_action( 'frm_after_create_entry', 'FrmActionSchedulerCronController::send_async', 20, 1 );
+		add_action( 'frm_after_update_entry', 'FrmActionSchedulerCronController::send_async', 10, 1 );
 	}
 
 
@@ -494,6 +524,7 @@ class FrmActionSchedulerAppController {
 		$cmd = $update ? "REPLACE" : "INSERT IGNORE";
 		$wpdb->get_results( "{$cmd} INTO {$wpdb->prefix}frm_actionscheduler_queue (". implode(", ", array_keys($data)) .") VALUES ('". implode("', '", $data) ."');" );
 
+		do_action( 'frm_actionscheduler_after_schedule', $action, $entry_id, $timestamp );
 	}
 
 

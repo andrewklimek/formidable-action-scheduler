@@ -18,7 +18,7 @@ function load_frm_action_scheduler() {
 register_activation_hook( __FILE__, 'frm_action_scheduler_activation' );
 
 function frm_action_scheduler_activation() {
-
+	
 	require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );// to use dbDelta()
 	global $wpdb;
 	$charset_collate = $wpdb->get_charset_collate();
