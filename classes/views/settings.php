@@ -12,14 +12,6 @@ if ( get_option('frm_action_scheduler_debug' ) ) echo "<style>.frm-autoresponder
 	<input type="hidden" class="frm-autoresponder-is-active" name="<?php echo esc_attr( $input_name ); ?>[is_active]" value="<?php echo esc_attr( $autoresponder['is_active'] ); ?>" />
 	<h3 style="margin-right:0">Automation <a href="#" class="frm_icon_font frm_delete_icon frm_remove_autoresponder"> </a></h3>
 	<div id="frm_autoresponder_row_<?php echo esc_attr( $action_key ) ?>">
-		<select class="frm-autoresponder-trigger-select" name="<?php echo esc_attr( $input_name ); ?>[do_default_trigger]">
-			<option value="no" <?php selected( 'no', $autoresponder['do_default_trigger'] ); ?>>Ignore</option>
-			<option value="yes" <?php selected( 'yes', $autoresponder['do_default_trigger'] ); ?>>Respect</option>
-		</select>	
-		<span class="frm-autoresponder-trigger-verbage">
-			<?php echo sprintf( 'the "%s" setting above', '<em>' . __( 'Trigger this action after', 'formidable' ) . '</em>' ); ?>
-		</span>	
-		<br/>
 		Send this notification
 		<input type="number" name="<?php echo esc_attr( $input_name ); ?>[send_interval]" style="width:50px;text-align:center" value="<?php echo esc_attr( empty( $autoresponder['send_interval'] ) ? '1' : $autoresponder['send_interval'] ); ?>" min="1" />
 		<select name="<?php echo esc_attr( $input_name ); ?>[send_unit]">
@@ -30,11 +22,8 @@ if ( get_option('frm_action_scheduler_debug' ) ) echo "<style>.frm-autoresponder
 			<?php endforeach; ?>	
 		</select>	
 		<select class="frm-autoresponder-before-after" name="<?php echo esc_attr( $input_name ); ?>[send_before_after]">
-			<?php foreach ( array( 'after' => 'After', 'before' => 'Before' ) as $unit => $label ) : ?>
-				<option value="<?php echo esc_attr( $unit ); ?>" <?php selected( $autoresponder['send_before_after'], $unit ); ?>>
-					<?php echo esc_html( $label ); ?>
-				</option>
-			<?php endforeach; ?>	
+			<option value="after" <?php selected( $autoresponder['send_before_after'], 'after' ); ?>>After</option>
+			<option value="before" <?php selected( $autoresponder['send_before_after'], 'before' ); ?>>Before</option>
 		</select>
 		<select class="frm_autoresponder_date_field" name="<?php echo esc_attr( $input_name ); ?>[send_date]">
 			<option value="update" <?php selected( 'update', $autoresponder['send_date'] ); ?>>Create / Update Date</option>
@@ -50,7 +39,7 @@ if ( get_option('frm_action_scheduler_debug' ) ) echo "<style>.frm-autoresponder
 					</option>
 				<?php endforeach; ?>
 			<?php endforeach; ?>
-		</select><br/>
+		</select><br>
 		<label style="padding:8px 0;display:inline-block">
 			<input type="checkbox" class="frm-autoresponder-send-after" name="<?php echo esc_attr( $input_name ); ?>[send_after]" value="1" <?php checked( 1, $autoresponder['send_after'] ); ?> />
 			...and then every 
@@ -84,7 +73,7 @@ if ( get_option('frm_action_scheduler_debug' ) ) echo "<style>.frm-autoresponder
 					</option>
 				<?php endforeach; ?>	
 			</select>	
-			after that<br/>
+			after that<br>
 			<label style="padding:8px 0;display:inline-block">
 				<input type="checkbox" class="frm-autoresponder-send-after-limit" name="<?php echo esc_attr( $input_name ); ?>[send_after_limit]" value="1" <?php checked( 1, $autoresponder['send_after_limit'] ); ?> />
 				...a maximum of 
@@ -93,9 +82,13 @@ if ( get_option('frm_action_scheduler_debug' ) ) echo "<style>.frm-autoresponder
 				<input type="number" name="<?php echo esc_attr( $input_name ); ?>[send_after_count]" style="width:50px;text-align:center" value="<?php echo esc_attr( empty( $autoresponder['send_after_count'] ) ? '1' : $autoresponder['send_after_count'] ); ?>" />
 				times
 			</span>
-		</span>
-		<div style="display:flex;gap:2em">
-			Recheck conditionals
+		</span><br>
+		<label style="padding:8px 0;display:inline-block;">
+			<input type="checkbox" name="<?php echo esc_attr( $input_name ); ?>[do_default_trigger]" value="yes" <?php checked( 'yes', $autoresponder['do_default_trigger'] ); ?>>
+			Also trigger this action right away
+		</label>
+		<div style="padding:8px 0;display:flex;gap:2em">
+			Re-check conditionals
 			<label><input type=radio value="" name="<?php echo esc_attr( $input_name ); ?>[recheck]" <?php checked($autoresponder['recheck'], ''); ?>>Auto</label>
 			<label><input type=radio value="yes" name="<?php echo esc_attr( $input_name ); ?>[recheck]" <?php checked($autoresponder['recheck'], 'yes'); ?>>Yes</label>
 			<label><input type=radio value="no" name="<?php echo esc_attr( $input_name ); ?>[recheck]" <?php checked($autoresponder['recheck'], 'no'); ?>>No</label>

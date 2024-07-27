@@ -112,7 +112,7 @@ class FrmActionSchedulerAppController {
 		// error_log( __FUNCTION__ );
 		if ( $autoresponder = FrmActionScheduler::get_autoresponder( $action ) ) {
 			// It has an autoresponder component to the notification.  Is it set to ignore the default action?
-			if ( $autoresponder['do_default_trigger'] == 'no' ) {
+			if ( $autoresponder['do_default_trigger'] !== 'yes' ) {
 				if ( $action->post_excerpt == 'email' ) {
 					remove_action( 'frm_trigger_email_action', 'FrmNotification::trigger_email', 10 );//if ( is_callable( 'FrmNotification::stop_emails') ) FrmNotification::stop_emails();
 				} elseif ( $action->post_excerpt == 'twilio' ) {
@@ -141,7 +141,7 @@ class FrmActionSchedulerAppController {
 		// error_log( __FUNCTION__ );
 		if ( $autoresponder = FrmActionScheduler::get_autoresponder( $action ) ) {
 			// It's has an autoresponder component to the notification.  Is it set to ignore the default action?
-			if ( $autoresponder['do_default_trigger'] == 'no' ) {
+			if ( $autoresponder['do_default_trigger'] !== 'yes' ) {
 				if ( $action->post_excerpt == 'email' ) {
 					add_action( 'frm_trigger_email_action', 'FrmNotification::trigger_email', 10, 3 );// if ( is_callable( 'FrmNotification::hook_emails_to_action') ) FrmNotification::hook_emails_to_action();
 				} elseif ( $action->post_excerpt == 'twilio' ) {

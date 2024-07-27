@@ -3,35 +3,32 @@
 class FrmActionScheduler {
 	/**
 	 * The autoresponder is an array with the following elements:
-	 *     bool     is_active           - whether an autoresponder is active for the action
-	 *     bool     do_default_trigger  - either 'yes' or 'no'.  'yes' means the default Formidable Pro email will still be
-	 *                                    sent immediately.  'no' means that gets skipped.  Autoresponder gets queued
-	 *                                    regardless
-	 *     string   send_date           - the reference date.  either 'update' or 'create' ( for date the entry was
-	 *                                    updated or created ) or a numeric field id to a date field
-	 *     string   send_before_after   - 'before' means send before reference date, 'after' means send after
-	 *     string   send_unit           - 'minutes', 'hours', 'days', 'months', 'years'.  Potentially could be anything that
-	 *                                     works in the form strtotime( sprintf( "-$x %s", $send_unit ) );
-	 *     int      send_interval       - how many send_unit's we will schedule for.  Positive integer
-	 *     bool     send_after          - whether to schedule another autoresponder after the initial one
-	 *     bool     send_after_limit    - whether to set a maximum number of times
-	 *     null|int send_after_count    - if provided, the maximum number of times ( in total, including the very first
-	 *                                    autoresponder ) to send this notification.  If null, then there is no limit.
-	 *                                    This has no effect unless 'send_after' and 'send_after_limit' are true
-	 *     string   send_after_unit     - like send_unit but for "after" autoresponders
-	 *     string   send_after_interval - like send_interval but for "after" autoresponders
-	 *     string   send_after_interval_type - tells us what the send_after_interval refers to, either a 'number' ( default )
-	 *                                    or a 'field'
-	 *     int      send_after_interval_field - the id of the field from which to decide the "send_after_interval" ( must
-	 *                                    be a number field
-	 *     bool     debug               - whether or not to turn debug on for this autoresponder
+	 *   bool     is_active                 - whether an autoresponder is active for the action
+	 *   string   do_default_trigger        - either 'yes' or null.  'yes' means the default Formidable Pro email will still be sent immediately.
+	 *                                          null means that gets skipped.  Autoresponder gets queued regardless.
+	 *   string   send_date                 - the reference date.  either 'update' or 'create' ( for date the entry was
+	 *                                        updated or created ) or a numeric field id to a date field
+	 *   string   send_before_after         - 'before' means send before reference date, 'after' means send after
+	 *   string   send_unit                 - 'minutes', 'hours', 'days', 'months', 'years'.  Potentially could be anything that
+	 *                                         works in the form strtotime( sprintf( "-$x %s", $send_unit ) );
+	 *   int      send_interval             - how many send_unit's we will schedule for.  Positive integer
+	 *   bool     send_after                - whether to schedule another autoresponder after the initial one
+	 *   bool     send_after_limit          - whether to set a maximum number of times
+	 *   null|int send_after_count          - if provided, the maximum number of times ( in total, including the very first
+	 *                                        autoresponder ) to send this notification.  If null, then there is no limit.
+	 *                                        This has no effect unless 'send_after' and 'send_after_limit' are true
+	 *   string   send_after_unit           - like send_unit but for "after" autoresponders
+	 *   string   send_after_interval       - like send_interval but for "after" autoresponders
+	 *   string   send_after_interval_type  - tells us what the send_after_interval refers to, either a 'number' ( default ) or a 'field'
+	 *   int      send_after_interval_field - the id of the field from which to decide the "send_after_interval" ( must be a number field )
+	 *   bool     debug                     - whether or not to turn debug on for this autoresponder
 	 *
 	 * @return array
 	 */
 	public static function get_default_autoresponder() {
 		$defaults = [
 			'is_active'                 => true,
-			'do_default_trigger'        => 'no',
+			'do_default_trigger'        => null,
 			'recheck'                   => null,
 			'send_date'                 => 'update',
 			'send_before_after'         => 'after',
@@ -78,7 +75,7 @@ class FrmActionScheduler {
 	 * @param int|object $action either an action id or an action object
 	 *
 	 * @return bool|object an object if it's a valid "autorespondable" action, or the boolean false if it isn't.
-	 *                     Note, just because it's a valid action doesn't mean it has an autoresponder.
+	 *                   Note, just because it's a valid action doesn't mean it has an autoresponder.
 	 */
 	public static function get_action( $action ) {
 		if ( is_numeric( $action ) ) {
@@ -138,7 +135,7 @@ class FrmActionScheduler {
 	 * Removes an autoresponder from an action.
 	 *
 	 * @param object $action the post object for the action.  Passed by reference and will be changed ( autoresponder
-	 *                       will be removed )
+	 *                     will be removed )
 	 *
 	 * @return object the object with the autoresponder removed.  Unchanged if it didn't have an autoresponder.
 	 */
