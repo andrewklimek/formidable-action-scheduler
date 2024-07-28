@@ -23,9 +23,10 @@ class FrmActionSchedulerCronController {
 	public static function schedule_recurring_cron( $action ) {
 		if ( ! is_numeric( $action ) ) return;
 		if ( ! wp_next_scheduled( 'frm_actionscheduler_cron_hook' ) ) {
-			$time = intval( ceil( time() / 60 ) * 60 );// make it an even minute
-			wp_schedule_event( $time, 'five_minutes', 'frm_actionscheduler_cron_hook' );
+			$time = intval( ceil( time() / 300 ) * 300 );// make it an even minute
+			$result = wp_schedule_event( $time, 'five_minutes', 'frm_actionscheduler_cron_hook', [], true );
 		}
+		remove_action( 'frm_actionscheduler_after_schedule', __CLASS__ . '::schedule_recurring_cron', 10 );
 	}
 
 

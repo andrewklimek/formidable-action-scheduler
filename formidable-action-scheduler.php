@@ -39,4 +39,30 @@ function frm_action_scheduler_activation() {
 		PRIMARY KEY  (action_entry)
 		) ENGINE=InnoDB {$charset_collate};");
 
+
+	/**
+	 * Migrate from Formidable Form Action Automation
+	 */
+	deactivate_plugins( 'formidable-autoresponder/formidable-autoresponder.php', 'silent' );
+
+	load_frm_action_scheduler();
+
+	define( 'DOING_FRM_ACTION_SCHEDULER_QUEUE', true );
+	$crons = _get_cron_array();
+	foreach ( $crons as $timestamp => $hooks ) {
+		foreach ( $hooks as $hook => $events ) {
+			if ( $hook !== 'formidable_send_autoresponder' ) continue;
+			$set_one = true;
+			foreach ( $events as $event ) {
+				FrmActionSchedulerAppController::schedule( $event['args'][1], $event['args'][0], $timestamp, true );// $action, $entry_id, $timestamp, $recheck_conditionals
+			}
+		}
+	}
+	if ( isset( $set_one ) ) {
+		FrmActionSchedulerCronController::set_next_run();
+		wp_unschedule_hook('formidable_send_autoresponder');
+		if ( $result === false ) {
+			error_log( 'setting crons failed... ' . var_export( $crons, 1 ) );
+		}
+	}
 }
