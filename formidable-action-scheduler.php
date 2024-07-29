@@ -59,10 +59,6 @@ function frm_action_scheduler_activation() {
 		}
 	}
 	if ( isset( $set_one ) ) {
-		FrmActionSchedulerCronController::set_next_run();
 		wp_unschedule_hook('formidable_send_autoresponder');
-		if ( $result === false ) {
-			error_log( 'setting crons failed... ' . var_export( $crons, 1 ) );
-		}
 	}
 }

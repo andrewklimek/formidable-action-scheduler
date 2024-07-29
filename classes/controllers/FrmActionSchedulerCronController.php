@@ -56,7 +56,7 @@ class FrmActionSchedulerCronController {
 			return;
 		}
 
-		$next_run = get_option( 'frm_action_scheduler_next_run', 10000 + time() );
+		$next_run = self::get_next_run();
 		error_log( 'frm_action_scheduler_next_run: ' . $next_run );
 		if ( ! $next_run ) {
 			error_log('exiting bc no next run!');
@@ -94,6 +94,16 @@ class FrmActionSchedulerCronController {
 		return;
 	}
 
+	public static function get_next_run() {
+		$timestamp = get_option( 'frm_action_scheduler_next_run', 'init' );
+		if ( 'init' === $timestamp ) {
+			global $wpdb;
+			$timestamp = $wpdb->get_var("SELECT time FROM {$wpdb->prefix}frm_actionscheduler_queue ORDER BY time LIMIT 1");
+			add_option( 'frm_action_scheduler_next_run', $timestamp, '', true );
+		}
+		return strtotime( $timestamp );
+	}
+
 	public static function set_next_run( $timestamp=0 ) {
 		global $wpdb;
 		if ( $timestamp ) {
@@ -101,12 +111,13 @@ class FrmActionSchedulerCronController {
 			$wpdb->get_results("UPDATE {$wpdb->prefix}options SET option_value = $timestamp WHERE option_name='frm_action_scheduler_next_run' AND ( option_value > $timestamp OR option_value = '')");
 			error_log("setting next run as $timestamp  - rows_affected: $wpdb->rows_affected");// secret property
 		} else {
-			$wpdb->get_results("UPDATE {$wpdb->prefix}options SET option_value = (SELECT UNIX_TIMESTAMP(time) FROM {$wpdb->prefix}frm_actionscheduler_queue ORDER BY time LIMIT 1) WHERE option_name='frm_action_scheduler_next_run'");
+			$wpdb->get_results("UPDATE {$wpdb->prefix}options SET option_value = (SELECT time FROM {$wpdb->prefix}frm_actionscheduler_queue ORDER BY time LIMIT 1) WHERE option_name='frm_action_scheduler_next_run'");
 			error_log("setting next run based on schedule table - rows_affected: $wpdb->rows_affected");// secret property
 		}
 	}
 
 	public static function do_queue( $actions = [] ) {
+		self::get_next_run();
 
 		if ( !empty( $actions ) ) {
 			$in = [];
@@ -142,7 +153,7 @@ class FrmActionSchedulerCronController {
 			// delete_transient( 'frm_action_scheduler_running' );
 
 			// TESTING CONSISTENCY
-			$next_run = get_option( 'frm_action_scheduler_next_run', 0 );
+			$next_run = self::get_next_run();
 			if ( $next_run ) {
 				if ( strtotime( $items[0]->time ) == (int) $next_run ) {
 					error_log( 'frm_action_scheduler_next_run was correct' );

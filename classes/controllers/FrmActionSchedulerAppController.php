@@ -415,11 +415,9 @@ class FrmActionSchedulerAppController {
 		$new = self::track_lowest_timestamp();
 		error_log( __FUNCTION__ ." - new: $new");
 		if ( ! $new ) return;
-		$current = get_option( 'frm_action_scheduler_next_run', 'init' );
+		$current = FrmActionSchedulerCronController::get_next_run();
 		error_log( __FUNCTION__ ." - cur: $current");
-		if ( 'init' === $current ) {
-			$wpdb->insert( $wpdb->prefix .'options', [ 'option_name' => 'frm_action_scheduler_next_run', 'option_value' => $new, 'autoload' => 'yes' ] );
-		} elseif ( ! $current ) {
+		if ( ! $current ) {
 			FrmActionSchedulerCronController::set_next_run();// option got clear, probably because nothing to schedule next last time, but safest to reset it.
 		} elseif ( $new < $current ) {
 			error_log("updating frm_action_scheduler_next_run because $new is < $current");
