@@ -172,11 +172,22 @@ class FrmActionSchedulerAppController {
 	public static function trigger_scheduler( $action, $entry, $form, $event ) {
 
 		// TODO is this needed, and if so shouldnt it be after get_autoresponder check?
+		// Need to think through what should happen if form is updated while actions are still pending
 		// self::unschedule( [ 'entry_id' => $entry->id, 'action_id' => $action->ID ] );
 		// error_log( __FUNCTION__ );
 
 		$autoresponder = FrmActionScheduler::get_autoresponder( $action );
 		if ( ! $autoresponder ) return;
+
+		// don't bother scheduling updates that have sent their limit in the past - this seems like it could be optional behaviour
+		if ( $event == 'update' && $autoresponder['send_after_limit'] ) {
+			$sent_count = self::get_run_count( $entry->id, $action->ID );
+			if ( $sent_count >= $autoresponder['send_after_count'] ) {
+				error_log("dont schedule action {$action->ID} for entry {$entry->id} because it's already at its limit");
+				self::debug( sprintf( 'Not scheduling $s because we have already sent out the limit of %d.', $action->post_excerpt, $sent_count ), $action );
+				return;
+			}
+		}
 
 		$reference_date = self::get_trigger_date( compact( 'entry', 'action', 'autoresponder', 'event' ) );
 		if ( empty( $reference_date ) ) return;
@@ -328,7 +339,8 @@ class FrmActionSchedulerAppController {
 		if ( $autoresponder['send_after'] ) {
 			$sent_count = self::get_run_count( $entry_id, $action_id );
 			if ( $autoresponder['send_after_limit'] && $sent_count >= $autoresponder['send_after_count'] ) {
-				self::debug( sprintf( 'Not triggering $s because there we have already sent out the limit of %d.', $action->post_excerpt, $sent_count ), $action );
+				error_log("This shoudln't happen unless a form is updated while there's already an update-triggered action in queue");
+				self::debug( sprintf( 'Not triggering $s because we have already sent out the limit of %d.', $action->post_excerpt, $sent_count ), $action );
 				return;
 			}
 			$sent_count++;
@@ -342,7 +354,7 @@ class FrmActionSchedulerAppController {
 
 		// Now, do the action - this will trigger FrmNotification::trigger_email();
 		self::debug( sprintf( 'Triggering %1$s action for "%2$s"', $action->post_excerpt, $action->post_title ), $action );
-		do_action( 'frm_trigger_' . $action->post_excerpt . '_action', $action, $entry, FrmForm::getOne( $entry->form_id ), 'create' );// TODO why does this say 'create'?
+		do_action( 'frm_trigger_' . $action->post_excerpt . '_action', $action, $entry, FrmForm::getOne( $entry->form_id ), 'create' );// TODO this event type wont be accurate and I dont think there's a way unless it is stored in the scheduled table
 
 		self::add_to_log( $entry_id, $action_id, $sent_count );
 		
