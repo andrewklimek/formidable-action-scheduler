@@ -388,7 +388,7 @@ class FrmActionSchedulerAppController {
 
 	public static function add_to_log( $entry_id, $action_id, $sent_count ) {
 		global $wpdb;
-		$data =[ 'entry' => $entry_id, 'action' => $action_id, 'time' => date('Y-m-d H:i:s'), 'count' => $sent_count ];
+		$data =[ 'entry' => $entry_id, 'action' => $action_id, 'time' => time(), 'count' => $sent_count ];
 		// error_log(var_export($data,1));// TODO wordpress seems to convert NULL to '' if it really matters
 		$wpdb->get_results( "INSERT INTO {$wpdb->prefix}frm_actionscheduler_logs (". implode(", ", array_keys($data)) .") VALUES ('". implode("', '", $data) ."');" );
 		// error_log(var_export($wpdb->last_query,1));
@@ -452,7 +452,7 @@ class FrmActionSchedulerAppController {
 		global $wpdb;
 		$data = [
 			'action_entry' => $action .'_'. $entry_id,
-			'time' => date( 'Y-m-d H:i:s', $timestamp ),
+			'time' => $timestamp,//date( 'Y-m-d H:i:s', $timestamp ),
 			'recheck' => $recheck_conditionals ? 1 : null,
 		];
 		$cmd = $update ? "REPLACE" : "INSERT IGNORE";

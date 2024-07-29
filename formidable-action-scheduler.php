@@ -27,14 +27,14 @@ function frm_action_scheduler_activation() {
 		id int(11) unsigned NOT NULL auto_increment,
 		entry int(11) unsigned NOT NULL default 0,
 		action int(11) unsigned NOT NULL default 0,
-		time datetime NOT NULL default '0000-00-00 00:00:00',
+		time int(10) NOT NULL default UNIX_TIMESTAMP(),
 		count tinyint(3) unsigned NULL default NULL,
 		PRIMARY KEY  (id)
 		) ENGINE=InnoDB {$charset_collate};");
 
 	dbDelta( "CREATE TABLE {$wpdb->prefix}frm_actionscheduler_queue (
 		action_entry varchar(255) NOT NULL default '',
-		time datetime NOT NULL default '0000-00-00 00:00:00',
+		time int(10) NOT NULL,
 		recheck tinyint(1) NULL,
 		PRIMARY KEY  (action_entry)
 		) ENGINE=InnoDB {$charset_collate};");
