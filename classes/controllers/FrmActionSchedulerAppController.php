@@ -452,7 +452,7 @@ class FrmActionSchedulerAppController {
 		global $wpdb;
 		$data = [
 			'action_entry' => $action .'_'. $entry_id,
-			'time' => $timestamp,//date( 'Y-m-d H:i:s', $timestamp ),
+			'time' => $timestamp,
 			'recheck' => $recheck_conditionals ? 1 : null,
 		];
 		$cmd = $update ? "REPLACE" : "INSERT IGNORE";

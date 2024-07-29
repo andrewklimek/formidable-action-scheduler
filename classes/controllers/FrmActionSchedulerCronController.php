@@ -17,8 +17,15 @@ class FrmActionSchedulerCronController {
 			add_action( 'frm_actionscheduler_after_schedule', __CLASS__ . '::schedule_recurring_cron', 10, 1 );
 			// self::schedule_recurring_cron();
 		}
+		add_shortcode( 'frm_actionscheduler_queue', __CLASS__ . '::frm_actionscheduler_queue_shortcode' );
 	}
 
+	public static function frm_actionscheduler_queue_shortcode($a) {
+		if ( ! current_user_can( 'frm_edit_entries' ) ) return;
+		ob_start();
+		include( FrmActionSchedulerHelper::plugin_path( 'classes/views/queue.php' ) );
+		return ob_get_clean();
+	}
 
 	public static function schedule_recurring_cron( $action ) {
 		if ( ! is_numeric( $action ) ) return;
@@ -101,7 +108,7 @@ class FrmActionSchedulerCronController {
 			$timestamp = $wpdb->get_var("SELECT time FROM {$wpdb->prefix}frm_actionscheduler_queue ORDER BY time LIMIT 1");
 			add_option( 'frm_action_scheduler_next_run', $timestamp, '', true );
 		}
-		return strtotime( $timestamp );
+		return (int) $timestamp;
 	}
 
 	public static function set_next_run( $timestamp=0 ) {
@@ -129,19 +136,20 @@ class FrmActionSchedulerCronController {
 		if ( !empty( $in ) ) {
 			$where = "WHERE action_entry IN ('" . implode( "', '", $in ) . "')";
 		} else {
-			$where = "WHERE time <= '" . date('Y-m-d H:i:s' ) . "'";
+			$where = "WHERE time <= '" . time() . "'";
 		}
 
 		error_log(__FUNCTION__);
 		global $wpdb;
 		$items = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}frm_actionscheduler_queue $where ORDER BY time ASC LIMIT 30");
-		if ( ! $items ) return;
 		error_log( $wpdb->last_query );
+		error_log( "returned {$wpdb->num_rows} rows" );
+		if ( ! $items ) return;
 
 		foreach ( $items as $item ) {
 			error_log( "doing: " . $item->action_entry );
 			$action_entry = explode( '_', $item->action_entry );
-			if ( empty( $action ) && ! is_numeric( $action_entry[0] ) && strtotime( $item->time ) < time() + 30 ) {
+			if ( empty( $action ) && ! is_numeric( $action_entry[0] ) && $item->time < time() + 30 ) {
 				error_log('found a very recent deferred action in queue... This shouldnt happen!');
 			}
 			FrmActionSchedulerAppController::run_action( $action_entry[1], $action_entry[0], $item->recheck );// $entry_id, $action_id, $recheck
@@ -155,10 +163,10 @@ class FrmActionSchedulerCronController {
 			// TESTING CONSISTENCY
 			$next_run = self::get_next_run();
 			if ( $next_run ) {
-				if ( strtotime( $items[0]->time ) == (int) $next_run ) {
+				if ( $items[0]->time == $next_run ) {
 					error_log( 'frm_action_scheduler_next_run was correct' );
 				} else {
-					error_log( "frm_action_scheduler_next_run was mismatched: {$items[0]->time} vs " . date("Y-m-d H:i:s", $next_run ) );
+					error_log( "frm_action_scheduler_next_run was mismatched: {$items[0]->time} vs $next_run" );
 				}
 			}
 		}
