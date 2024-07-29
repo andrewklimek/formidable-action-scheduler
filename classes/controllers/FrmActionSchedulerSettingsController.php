@@ -96,6 +96,7 @@ class FrmActionSchedulerSettingsController {
 		check_ajax_referer( 'frm_ajax', 'nonce' );
 
 		FrmActionSchedulerAppController::unschedule( wp_parse_args( $_POST ) );
+		echo "ok";
 
 		wp_die();
 	}

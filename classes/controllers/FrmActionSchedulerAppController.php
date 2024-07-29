@@ -63,6 +63,7 @@ class FrmActionSchedulerAppController {
 		add_action( 'wp_ajax_formidable_autoresponder_logview', $class . '::log_viewer' );
 		add_action( 'wp_ajax_formidable_autoresponder_delete_log', $class . '::delete_log_ajax' );
 		add_action( 'wp_ajax_formidable_autoresponder_delete_queue_item', $class . '::delete_queue_item_ajax' );
+		add_action( 'wp_ajax_formidable_autoresponder_run_queue_item', $class . '::run_queue_item_ajax' );
 
 		add_action( 'frm_add_settings_section', $class . '::add_settings_section' );
 	}
