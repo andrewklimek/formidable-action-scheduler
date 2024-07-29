@@ -1,6 +1,7 @@
 <?php
+$limit = isset( $_GET['all'] ) ? '' : 'LIMIT 100';
 global $wpdb;
-$queue = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}frm_actionscheduler_queue WHERE action_entry ORDER BY time LIMIT 500" );
+$queue = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}frm_actionscheduler_queue WHERE action_entry ORDER BY time $limit" );
 $actions = [];
 $endpoint = admin_url( 'admin-ajax.php' ) . '?nonce=' . wp_create_nonce('frm_ajax');
 ?>
@@ -38,6 +39,7 @@ foreach ( $queue as $index => $event ) :
 endforeach;
 ?>
 </table>
+<?php if ( $limit ) echo "<p><a href='?all'>show all</a></p>"; ?>
 <script>
 (function(){
 handleActions = function(e) {
