@@ -34,8 +34,8 @@ foreach ( $queue as $index => $event ) :
 	echo "<td>" . $actions[ $action_id ]['type'];
 	echo "<td>" . $actions[ $action_id ]['form'];
 	echo "<td><a href='". esc_url( admin_url( 'admin.php?page=formidable-entries&frm_action=show&id=' . $entry_id ) ) ."'>#{$entry_id}</a>";
-	// echo "<td><a href='#' title='Run this Action' data-action=run>▶️</a>";
-	echo "<td><a href='#' title='Delete this Action' data-action=delete>⏹️</a>";
+	// echo "<td><a href='#' title='Run this Action' data-action=run>📮</a>";
+	echo "<td><a href='#' title='Delete this Action' data-action=delete>🗑️</a>";
 endforeach;
 ?>
 </table>
