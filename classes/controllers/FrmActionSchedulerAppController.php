@@ -10,44 +10,39 @@ class FrmActionSchedulerAppController {
 
 	public static function init() {
 
-		// Important, if you add another listener to frm_trigger_email_action, make sure you
-		// remove it before actually doing that action in the run_action method
 		foreach ( FrmActionSchedulerHelper::allowed_actions() as $action ) {
 			self::load_hooks( $action );
 		}
-
-		/**
-		 * This deletes any schedule items when an entry is deleted.
-		 * It works but its in needed when it would rarely be the case and it would get unscheduled when it tries to run and finds no entry available?
-		 */
-		// add_action( 'frm_before_destroy_entry', __CLASS__ . '::unschedule_all_events_for_entry' );
 
 		self::load_admin_hooks();
 
 		FrmActionSchedulerCronController::init();
 
+		// This deletes any schedule items when an entry is deleted.
+		// It works but is it needed when it would rarely be the case and it would get unscheduled when it tries to run and finds no entry available?
+		// add_action( 'frm_before_destroy_entry', __CLASS__ . '::unschedule_all_events_for_entry' );
+
 		// using cron.php now because it's faster to hang up
 		// add_action( 'wp_ajax_frm_actionscheduler_async', 'FrmActionSchedulerCronController::ajax_do_queue' );
 		// add_action( 'wp_ajax_nopriv_frm_actionscheduler_async', 'FrmActionSchedulerCronController::ajax_do_queue' );
-
-		if ( get_option('frm_action_scheduler_defer_all', 0) ) {
-			add_action( 'frm_after_create_entry', __CLASS__ . '::defer_create_actions', 0, 3 );
-			add_action( 'frm_after_update_entry', __CLASS__ . '::defer_update_actions', 0, 2 );
-		}
 	}
 
-
 	private static function load_hooks( $action ) {
-		add_action( 'frm_trigger_' . $action . '_action', __CLASS__ . '::pre_trigger_scheduler', 2 );
-		add_action( 'frm_trigger_' . $action . '_action', __CLASS__ . '::post_trigger_scheduler', 1000 );
-		add_action( 'frm_trigger_' . $action . '_action', __CLASS__ . '::trigger_scheduler', 10, 4 );
+		if ( ! get_option('frm_action_scheduler_defer_all' ) ) {
+			add_action( "frm_trigger_{$action}_action", __CLASS__ . '::pre_trigger_scheduler', 2 );
+			add_action( "frm_trigger_{$action}_action", __CLASS__ . '::post_trigger_scheduler', 1000 );// TODO could be added from pre_trigger_scheduler
+		} else {
+			add_action( "frm_trigger_{$action}_action", __CLASS__ . '::unhook_standard_triggers', 2 );
+		}
+		add_action( "frm_trigger_{$action}_action", __CLASS__ . '::trigger_scheduler', 10, 4 );// TODO could be added from pre_trigger_scheduler
 	}
 
 
 	private static function unload_hooks( $action ) {
-		remove_action( 'frm_trigger_' . $action . '_action', __CLASS__ . '::pre_trigger_scheduler', 2 );
-		remove_action( 'frm_trigger_' . $action . '_action', __CLASS__ . '::post_trigger_scheduler', 1000 );
-		remove_action( 'frm_trigger_' . $action . '_action', __CLASS__ . '::trigger_scheduler', 10, 4 );
+		remove_action( "frm_trigger_{$action}_action", __CLASS__ . '::pre_trigger_scheduler', 2 );// TODO could just use this one if the other two are loaded from pre_trigger_scheduler
+		remove_action( "frm_trigger_{$action}_action", __CLASS__ . '::post_trigger_scheduler', 1000 );
+		remove_action( "frm_trigger_{$action}_action", __CLASS__ . '::trigger_scheduler', 10, 4 );
+		remove_action( "frm_trigger_{$action}_action", __CLASS__ . '::unhook_standard_triggers', 2 );
 	}
 
 
@@ -69,33 +64,21 @@ class FrmActionSchedulerAppController {
 	}
 
 
-	/**
-	 * Defer All Actions
-	 */
-	public static function defer_create_actions( $entry_id, $form_id, $args = array() ) {
-		$args['entry_id'] = $entry_id;
-		$args['form_id']  = $form_id;
-		$event = apply_filters( 'frm_trigger_create_action', 'create', $args );
-		self::schedule( $event, $entry_id );
-		self::remove_trigger_hooks();
-	}
-
-	public static function defer_update_actions( $entry_id, $form_id ) {
-		$event = apply_filters( 'frm_trigger_update_action', 'update', [ 'entry_id' => $entry_id ] );
-		self::schedule( $event, $entry_id );
-		self::remove_trigger_hooks();
-	}
-
-	public static function remove_trigger_hooks() {
-		remove_action( 'frm_after_create_entry', 'FrmFormActionsController::trigger_create_actions', 20 );// 3
-		remove_action( 'frm_after_create_entry', 'FrmProFormActionsController::trigger_draft_actions', 10 );// 2
-		remove_action( 'frm_after_update_entry', 'FrmProFormActionsController::trigger_update_actions', 10 );// 2
-
-		// trigger an async request to run these right away
-		// I guess these should be set on the same hooks and priorities so the timing will be sort of similar... probably still ruined if trying to modify data after this point.
-		// add_action( 'shutdown', 'FrmActionSchedulerCronController::send_async' );
-		add_action( 'frm_after_create_entry', 'FrmActionSchedulerCronController::send_async', 20, 1 );
-		add_action( 'frm_after_update_entry', 'FrmActionSchedulerCronController::send_async', 10, 1 );
+	public static function defer_action( $action_id=0, $entry_id=0 ) {
+		static $deferred = [];
+		if ( $action_id && $entry_id ) {
+			if ( ! $deferred ) {
+				// error_log("hooking send_deferred_async");
+				add_action( 'frm_after_create_entry', 'FrmActionSchedulerCronController::send_deferred_async', 30 );// trigger_create_actions is priority 20
+				add_action( 'frm_after_update_entry', 'FrmActionSchedulerCronController::send_deferred_async', 20 );// trigger_update_actions is priority 10
+			}
+			// $entry_id = (int) $entry_id;
+			// if ( empty( $deferred[ $entry_id ] ) ) $deferred[ $entry_id ] = [];
+			// $deferred[ $entry_id ][] = $action_id;
+			$deferred[] = $action_id .'_'. $entry_id;
+		}
+		// error_log("deferred: " . var_export($deferred,1));
+		return $deferred;
 	}
 
 
@@ -114,17 +97,21 @@ class FrmActionSchedulerAppController {
 		if ( $autoresponder = FrmActionScheduler::get_autoresponder( $action ) ) {
 			// It has an autoresponder component to the notification.  Is it set to ignore the default action?
 			if ( $autoresponder['do_default_trigger'] !== 'yes' ) {
-				if ( $action->post_excerpt == 'email' ) {
-					remove_action( 'frm_trigger_email_action', 'FrmNotification::trigger_email', 10 );//if ( is_callable( 'FrmNotification::stop_emails') ) FrmNotification::stop_emails();
-				} elseif ( $action->post_excerpt == 'twilio' ) {
-					remove_action( 'frm_trigger_twilio_action', 'FrmTwloAppController::trigger_sms', 10 );
-				} elseif ( $action->post_excerpt == 'api' ) {
-					remove_action( 'frm_trigger_api_action', 'FrmAPISettingsController::trigger_api', 10 );
-				}
+				self::unhook_standard_triggers( $action );
 			}
 		}
 	}
 
+
+	public static function unhook_standard_triggers( $action ) {
+		if ( $action->post_excerpt == 'email' ) {
+			remove_action( 'frm_trigger_email_action', 'FrmNotification::trigger_email', 10 );//if ( is_callable( 'FrmNotification::stop_emails') ) FrmNotification::stop_emails();
+		} elseif ( $action->post_excerpt == 'twilio' ) {
+			remove_action( 'frm_trigger_twilio_action', 'FrmTwloAppController::trigger_sms', 10 );
+		} elseif ( $action->post_excerpt == 'api' ) {
+			remove_action( 'frm_trigger_api_action', 'FrmAPISettingsController::trigger_api', 10 );
+		}
+	}
 
 	/**
 	 * This trigger listens for the frm_trigger_email_action and executes very late in the queue.  Its purpose is to
@@ -178,7 +165,16 @@ class FrmActionSchedulerAppController {
 		// error_log( __FUNCTION__ );
 
 		$autoresponder = FrmActionScheduler::get_autoresponder( $action );
-		if ( ! $autoresponder ) return;
+		if ( ! $autoresponder ) {
+			if ( get_option('frm_action_scheduler_defer_all' ) ) {// defer and exit
+				self::defer_action( $action->ID, $entry->id );
+			}
+			return;
+		}
+
+		if ( $autoresponder['do_default_trigger'] == 'yes' && get_option('frm_action_scheduler_defer_all' ) ) {// defer and continue to scheduling
+			self::defer_action( $action->ID, $entry->id );
+		}
 
 		// don't bother scheduling updates that have sent their limit in the past - this seems like it could be optional behaviour
 		if ( $event == 'update' && $autoresponder['send_after_limit'] ) {
@@ -210,103 +206,6 @@ class FrmActionSchedulerAppController {
 	}
 
 
-	private static function get_trigger_date( $a ) {
-		$send_date = $a['autoresponder']['send_date'];
-		$reference_date = '';
-		if ( strpos( $send_date, '-' ) ) {
-			// based on a date and time field
-			list( $date_field, $time_field ) = explode( '-', $send_date );
-			$reference_date = $a['entry']->metas[ $date_field ];
-			$a['time'] = $a['entry']->metas[ $time_field ];
-			if ( ! empty( $reference_date ) ) {
-				self::localize_date( $reference_date, $a );
-			}
-		} elseif ( is_numeric( $send_date ) ) {
-			// based on a field
-			if ( ! empty( $a['entry']->metas[ $send_date ] ) ) {
-				$reference_date = $a['entry']->metas[ $send_date ];
-				self::localize_date( $reference_date, $a );
-			}
-		} elseif ( $a['event'] == 'update' ) {
-			$reference_date = $a['entry']->updated_at;
-		} else {
-			$reference_date = $a['entry']->created_at;
-		}
-		return $reference_date;
-	}
-
-
-	private static function localize_date( &$reference_date, $a ) {
-		$a['date'] = $reference_date;
-		$a['time'] = ( isset( $a['time'] ) && ! empty( $a['time'] ) ) ? $a['time'] : '00:00:00';
-		$trigger_time = apply_filters( 'frm_autoresponder_time', $a['time'], $a );
-		$trigger_time = date( 'H:i:s', strtotime( $trigger_time ) );
-		$reference_date = date( 'Y-m-d H:i:s', strtotime( $reference_date . ' ' . $trigger_time ) );
-		$reference_date = get_gmt_from_date( $reference_date );
-	}
-
-
-	/**
-	 * Given the reference date, which is anything that passes strtotime(), and the settings, calculate the next trigger timestamp.
-	 *
-	 * @param string $reference_date any date that satisfies strtotime(), unix timestamp, or null for now
-	 * @param array  $atts
-	 *               - entry
-	 *               - autoresponder  the settings for this particular autoresponder.  We pay attention to
-	 *                                  - send_before_after - which says if we should trigger before or after the reference
-	 *                                    date
-	 *                                  - send_unit - which is 'minutes', 'hours', 'days', 'months', 'years'
-	 *                                  - send_interval which is how many send_units we should calculate
-	 *
-	 * @return int|boolean a timestamp if all is good, false if $reference_date does not translate to a date
-	 */
-	public static function calculate_trigger_timestamp( $reference_date=null, $a=[] ) {
-		$autoresponder = $a['autoresponder'];
-		$reference_ts = $reference_date ? ( is_numeric( $reference_date ) ? $reference_date : strtotime( $reference_date ) ) : time();
-		if ( ! $reference_ts ) return false;
-		$reference_ts = intval( round( $reference_ts / 60 ) * 60 );// make it an even minute
-
-		if ( !in_array( $autoresponder['send_before_after'], [ 'before', 'after' ] ) ) return false;
-		if ( !in_array( $autoresponder['send_unit'], [ 'minutes', 'hours', 'days', 'months', 'years' ] ) ) return false;
-		if ( !is_numeric( $autoresponder['send_interval'] ) ) return false;
-
-		$one = ( $autoresponder['send_before_after'] == 'before' ) ? -1 : 1;
-		$multiplier = ( $one == 1 ? '+' : '' ) . $one * $autoresponder['send_interval'];
-		$trigger_on = strtotime( $multiplier . ' ' . $autoresponder['send_unit'], $reference_ts );
-
-		if ( $trigger_on < time() ) {
-			self::get_future_date( $trigger_on, array( 'autoresponder' => $autoresponder, 'entry' => $a['entry'] ) );
-		}
-
-		return $trigger_on;
-	}
-
-
-	private static function get_future_date( &$trigger_on, $a ) {
-
-		$autoresponder = $a['autoresponder'];
-		if ( empty( $autoresponder['send_after'] ) ) {
-			// don't trigger if date has passed, and it is repeating
-			return;
-		}
-
-		$autoresponder = self::get_repeat_settings( $autoresponder, $a['entry'] );
-
-		if ( empty( $autoresponder['send_interval'] ) ) {
-			// if the interval is 0, prevent an infinite loop
-			$autoresponder['send_interval'] = 1;
-			$autoresponder['send_unit'] = 'minutes';
-		}
-
-		while ( $trigger_on < time() ) {
-			$trigger_on = strtotime( '+' . $autoresponder['send_interval'] . ' ' . $autoresponder['send_unit'], $trigger_on );
-		}
-	}
-
-	public static function run_all_actions( $entry_id, $event, $form_id ) {
-		FrmFormActionsController::trigger_actions( $event, $form_id, $entry_id );
-	}
-
 	/**
 	 * The method that listens to the cron job action 'formidable_send_autoresponder'.  It is passed in an entry id and action id.
 	 * It looks both of those up and if they both exist, then it checks to see if the action conditions are still met.
@@ -319,62 +218,73 @@ class FrmActionSchedulerAppController {
 		$entry = FrmEntry::getOne( $entry_id, true );
 		if ( empty( $entry ) ) return;
 
-		if ( in_array( $action_id, [ 'update', 'create', 'draft' ] ) ) {
-			self::run_all_actions( $entry_id, $action_id, $entry->form_id );
-			return;
-		}
-
 		$action = FrmActionScheduler::get_action( $action_id );
+error_log(__FUNCTION__ .' 1');
+		// prep only for actions with Autoresponder settings
 		$autoresponder = FrmActionScheduler::get_autoresponder( $action );
-		if ( empty( $autoresponder ) ) return;
+		if ( !empty( $autoresponder ) ) {
 
-		// action_conditions_met actually returns false if conditions are met.  it returns boolean "stop" value
-		if ( $recheck && FrmFormAction::action_conditions_met( $action, $entry ) ) {
-			self::debug( sprintf( 'Conditions for "%s" action for entry #%d not met. Halting.', $action->post_title, $entry->id, date( 'Y-m-d H:i:s' ) ), $action );
-			return;
-		}
+			if ( defined( 'DOING_FRM_DEFERRED_ACTIONS') ) {
+				error_log( "DOING_FRM_DEFERRED_ACTIONS was defined but it got an autoresponder settings... something not right");
+			}
+			error_log(__FUNCTION__ .' 2');
 
-		self::debug( sprintf( 'Conditions for "%s" action for entry #%d met. Proceeding.', $action->post_title, $entry->id, date( 'Y-m-d H:i:s' ) ), $action );
-		
-		$sent_count = null;
-		if ( $autoresponder['send_after'] ) {
-			$sent_count = self::get_run_count( $entry_id, $action_id );
-			if ( $autoresponder['send_after_limit'] && $sent_count >= $autoresponder['send_after_count'] ) {
-				error_log("This shoudln't happen unless a form is updated while there's already an update-triggered action in queue");
-				self::debug( sprintf( 'Not triggering $s because we have already sent out the limit of %d.', $action->post_excerpt, $sent_count ), $action );
+			// action_conditions_met actually returns false if conditions are met.  it returns boolean "stop" value
+			if ( $recheck && FrmFormAction::action_conditions_met( $action, $entry ) ) {
+				error_log("rechecking actions");
+				self::debug( sprintf( 'Conditions for "%s" action for entry #%d not met. Halting.', $action->post_title, $entry->id, date( 'Y-m-d H:i:s' ) ), $action );
 				return;
 			}
-			$sent_count++;
-		}
 
-		// make sure hooks are loaded
-		new FrmNotification();
-
-		// First remove our pre/post listeners - this is a scheduled autoresponder, not something triggered immediately after creating/updating the record
-		self::unload_hooks( $action->post_excerpt );
-
-		// Now, do the action - this will trigger FrmNotification::trigger_email();
-		self::debug( sprintf( 'Triggering %1$s action for "%2$s"', $action->post_excerpt, $action->post_title ), $action );
-		do_action( 'frm_trigger_' . $action->post_excerpt . '_action', $action, $entry, FrmForm::getOne( $entry->form_id ), 'create' );// TODO this event type wont be accurate and I dont think there's a way unless it is stored in the scheduled table
-
-		self::add_to_log( $entry_id, $action_id, $sent_count );
-		
-		// If necessary, setup the next event
-		if ( $autoresponder['send_after'] ) {
-			if ( ! $autoresponder['send_after_limit'] || $sent_count < $autoresponder['send_after_count'] ) {
-				$after_settings = self::get_repeat_settings( $autoresponder, $entry );
-
-				$trigger_ts = self::calculate_trigger_timestamp( time(), array( 'autoresponder' => $after_settings, 'entry' => $entry ) );
-
-				$recheck = $autoresponder['recheck'] == 'no' ? false : true;// default to rechecking repeat events unless explicitly set to No
-
-				self::schedule( $action, $entry_id, $trigger_ts, $recheck );
+			self::debug( sprintf( 'Conditions for "%s" action for entry #%d met. Proceeding.', $action->post_title, $entry->id, date( 'Y-m-d H:i:s' ) ), $action );
+			
+			$sent_count = null;
+			if ( $autoresponder['send_after'] ) {
+				$sent_count = self::get_run_count( $entry_id, $action_id );
+				if ( $autoresponder['send_after_limit'] && $sent_count >= $autoresponder['send_after_count'] ) {
+					error_log("This shoudln't happen unless a form is updated while there's already an update-triggered action in queue");
+					self::debug( sprintf( 'Not triggering $s because we have already sent out the limit of %d.', $action->post_excerpt, $sent_count ), $action );
+					return;
+				}
+				$sent_count++;
 			}
 		}
+		error_log(__FUNCTION__ .' 3');
 
-		// replace actions for other responders
-		self::load_hooks( $action->post_excerpt );
+		// DO THE ACTION
 
+		// TODO these 2 hook load/unloads could be done in do_queue... or maybe only load the hooks in the first place on frm_after_create_entry/frm_after_update_entry
+		// make sure hooks are loaded
+		new FrmNotification();
+		// Remove our pre/post listeners - this is a scheduled autoresponder, not something triggered immediately after creating/updating the record
+		self::unload_hooks( $action->post_excerpt );
+		// Do the action
+		do_action( 'frm_trigger_' . $action->post_excerpt . '_action', $action, $entry, FrmForm::getOne( $entry->form_id ), 'create' );// TODO this event type wont be accurate and I dont think there's a way unless it is stored in the scheduled table
+
+
+		// cleanup only for actions with Autoresponder settings
+		if ( !empty( $autoresponder ) ) {
+
+			self::debug( sprintf( 'Triggering %1$s action for "%2$s"', $action->post_excerpt, $action->post_title ), $action );
+
+			self::add_to_log( $entry_id, $action_id, $sent_count );
+			
+			// If necessary, setup the next event
+			if ( $autoresponder['send_after'] ) {
+				if ( ! $autoresponder['send_after_limit'] || $sent_count < $autoresponder['send_after_count'] ) {
+					$after_settings = self::get_repeat_settings( $autoresponder, $entry );
+
+					$trigger_ts = self::calculate_trigger_timestamp( time(), array( 'autoresponder' => $after_settings, 'entry' => $entry ) );
+
+					$recheck = $autoresponder['recheck'] == 'no' ? false : true;// default to rechecking repeat events unless explicitly set to No
+
+					self::schedule( $action, $entry_id, $trigger_ts, $recheck );
+				}
+			}
+
+			// replace actions for other responders
+			self::load_hooks( $action->post_excerpt );
+		}
 	}
 
 
@@ -489,6 +399,99 @@ class FrmActionSchedulerAppController {
 			'send_interval'     => ( $autoresponder['send_after_interval_type'] == 'field' ) ? $entry->metas[ $autoresponder['send_after_interval_field'] ] : $autoresponder['send_after_interval'],
 			'send_unit'         => $autoresponder['send_after_unit'],
 		] );
+	}
+
+	private static function get_trigger_date( $a ) {
+		$send_date = $a['autoresponder']['send_date'];
+		$reference_date = '';
+		if ( strpos( $send_date, '-' ) ) {
+			// based on a date and time field
+			list( $date_field, $time_field ) = explode( '-', $send_date );
+			$reference_date = $a['entry']->metas[ $date_field ];
+			$a['time'] = $a['entry']->metas[ $time_field ];
+			if ( ! empty( $reference_date ) ) {
+				self::localize_date( $reference_date, $a );
+			}
+		} elseif ( is_numeric( $send_date ) ) {
+			// based on a field
+			if ( ! empty( $a['entry']->metas[ $send_date ] ) ) {
+				$reference_date = $a['entry']->metas[ $send_date ];
+				self::localize_date( $reference_date, $a );
+			}
+		} elseif ( $a['event'] == 'update' ) {
+			$reference_date = $a['entry']->updated_at;
+		} else {
+			$reference_date = $a['entry']->created_at;
+		}
+		return $reference_date;
+	}
+
+
+	private static function localize_date( &$reference_date, $a ) {
+		$a['date'] = $reference_date;
+		$a['time'] = ( isset( $a['time'] ) && ! empty( $a['time'] ) ) ? $a['time'] : '00:00:00';
+		$trigger_time = apply_filters( 'frm_autoresponder_time', $a['time'], $a );
+		$trigger_time = date( 'H:i:s', strtotime( $trigger_time ) );
+		$reference_date = date( 'Y-m-d H:i:s', strtotime( $reference_date . ' ' . $trigger_time ) );
+		$reference_date = get_gmt_from_date( $reference_date );
+	}
+
+
+	/**
+	 * Given the reference date, which is anything that passes strtotime(), and the settings, calculate the next trigger timestamp.
+	 *
+	 * @param string $reference_date any date that satisfies strtotime(), unix timestamp, or null for now
+	 * @param array  $atts
+	 *               - entry
+	 *               - autoresponder  the settings for this particular autoresponder.  We pay attention to
+	 *                                  - send_before_after - which says if we should trigger before or after the reference
+	 *                                    date
+	 *                                  - send_unit - which is 'minutes', 'hours', 'days', 'months', 'years'
+	 *                                  - send_interval which is how many send_units we should calculate
+	 *
+	 * @return int|boolean a timestamp if all is good, false if $reference_date does not translate to a date
+	 */
+	public static function calculate_trigger_timestamp( $reference_date=null, $a=[] ) {
+		$autoresponder = $a['autoresponder'];
+		$reference_ts = $reference_date ? ( is_numeric( $reference_date ) ? $reference_date : strtotime( $reference_date ) ) : time();
+		if ( ! $reference_ts ) return false;
+		$reference_ts = intval( round( $reference_ts / 60 ) * 60 );// make it an even minute
+
+		if ( !in_array( $autoresponder['send_before_after'], [ 'before', 'after' ] ) ) return false;
+		if ( !in_array( $autoresponder['send_unit'], [ 'minutes', 'hours', 'days', 'months', 'years' ] ) ) return false;
+		if ( !is_numeric( $autoresponder['send_interval'] ) ) return false;
+
+		$one = ( $autoresponder['send_before_after'] == 'before' ) ? -1 : 1;
+		$multiplier = ( $one == 1 ? '+' : '' ) . $one * $autoresponder['send_interval'];
+		$trigger_on = strtotime( $multiplier . ' ' . $autoresponder['send_unit'], $reference_ts );
+
+		if ( $trigger_on < time() ) {
+			self::get_future_date( $trigger_on, array( 'autoresponder' => $autoresponder, 'entry' => $a['entry'] ) );
+		}
+
+		return $trigger_on;
+	}
+
+
+	private static function get_future_date( &$trigger_on, $a ) {
+
+		$autoresponder = $a['autoresponder'];
+		if ( empty( $autoresponder['send_after'] ) ) {
+			// don't trigger if date has passed, and it is repeating
+			return;
+		}
+
+		$autoresponder = self::get_repeat_settings( $autoresponder, $a['entry'] );
+
+		if ( empty( $autoresponder['send_interval'] ) ) {
+			// if the interval is 0, prevent an infinite loop
+			$autoresponder['send_interval'] = 1;
+			$autoresponder['send_unit'] = 'minutes';
+		}
+
+		while ( $trigger_on < time() ) {
+			$trigger_on = strtotime( '+' . $autoresponder['send_interval'] . ' ' . $autoresponder['send_unit'], $trigger_on );
+		}
 	}
 
 

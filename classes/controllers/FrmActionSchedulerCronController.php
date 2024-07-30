@@ -92,7 +92,7 @@ class FrmActionSchedulerCronController {
 
 		error_log("set lock $lock and calling send_async");
 
-		self::send_async( null, $lock );
+		self::send_async( [ 'lock' => $lock ] );
 
 		// self::do_queue();
 
@@ -124,17 +124,14 @@ class FrmActionSchedulerCronController {
 	}
 
 	public static function do_queue( $actions = [] ) {
-		self::get_next_run();
 
 		if ( !empty( $actions ) ) {
-			$in = [];
-			foreach( $actions as $action => $entry ) {
-				if ( ! is_numeric($entry) || ( ! is_numeric($action) && ! in_array($action, ['create','update','draft']) ) ) return;// data validation
-				$in[] = $action .'_'. $entry;
+			// data validation
+			foreach( $actions as $action ) {
+				$parts = explode( '_', $action );
+				if ( count($parts) != 2 || ! is_numeric($parts[0]) || !is_numeric($parts[1]) ) return;
 			}
-		}
-		if ( !empty( $in ) ) {
-			$where = "WHERE action_entry IN ('" . implode( "', '", $in ) . "')";
+			$where = "WHERE action_entry IN ('" . implode( "', '", $actions ) . "')";
 		} else {
 			$where = "WHERE time <= '" . time() . "'";
 		}
@@ -149,12 +146,9 @@ class FrmActionSchedulerCronController {
 		foreach ( $items as $item ) {
 			error_log( "doing: " . $item->action_entry );
 			$action_entry = explode( '_', $item->action_entry );
-			if ( empty( $action ) && ! is_numeric( $action_entry[0] ) && $item->time < time() + 30 ) {
-				error_log('found a very recent deferred action in queue... This shouldnt happen!');
-			}
 			FrmActionSchedulerAppController::run_action( $action_entry[1], $action_entry[0], $item->recheck );// $entry_id, $action_id, $recheck
 		}
-		if ( empty( $in ) ) {
+		if ( empty( $actions ) ) {
 			error_log('do_queue: set next run');
 			self::set_next_run();
 			// error_log('do_queue: delete frm_action_scheduler_running');
@@ -204,26 +198,26 @@ class FrmActionSchedulerCronController {
 	}
 
 
-	public static function send_async( $entry_id=0, $lock=null ) {
-		$body = [];
-		if ( $entry_id ) {
-			$actions = [];
-			switch ( current_filter() ) {
-				case 'frm_after_create_entry':
-					$actions = [ "create" => $entry_id, "draft" => $entry_id ];
-					break;
-				case 'frm_after_update_entry':
-					$actions = [ "update" => $entry_id ];
-					break;
-				default:
-					$actions = [ "create" => $entry_id, "update" => $entry_id, "draft" => $entry_id ];
-					break;
-			}
+	public static function send_deferred_async() {
+		error_log(__FUNCTION__);
+		$actions = FrmActionSchedulerAppController::defer_action();
+		if ( ! $actions ) return false;
+
+		$time = time() + 300;
+		$values = [];
+		foreach( $actions as $action ) {
+			$values[] = "('{$action}',{$time},0)";
 		}
-		if ( !empty( $actions ) ) $body['actions'] = $actions;
-		if ( !empty( $lock ) ) $body['lock'] = $lock;
+		$values = implode( ', ', $values );
+		global $wpdb;
+		$wpdb->get_results("INSERT INTO {$wpdb->prefix}frm_actionscheduler_queue VALUES $values");
+		// error_log($wpdb->last_query);
+		// error_log(var_export($wpdb->last_result,1));
 
+		self::send_async( [ 'actions' => $actions, 'deferred' => 1 ] );
+	}
 
+	public static function send_async( $body ) {
 		
 		// $url = add_query_arg( [ 'action' => 'frm_actionscheduler_async' ], admin_url( 'admin-ajax.php' ) );// , 'token' => wp_create_nonce( 'frm_actionscheduler_async' )
 		
