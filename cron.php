@@ -29,7 +29,20 @@ define( 'DOING_CRON', true );// might be useful to masquerade
 
 if ( ! defined( 'ABSPATH' ) ) {
 	/** Set up WordPress environment */
-	require_once realpath( __DIR__  . '/../../../wp-load.php' );
+	$abspath = dirname( __DIR__, 3 );
+	if ( ! file_exists( $abspath . '/wp-load.php') ) {
+		/** wp-load.php not in the expected place, recursively try to find a dir with both wp-load.php and wp-admin/ */
+		$abspath = __DIR__;
+		do {
+			if ( dirname( $abspath ) === $abspath ) {
+				error_log("Formidable Action Scheduler could not find the home directory and will not be able to work.");
+				die();
+			}
+			$abspath = dirname( $abspath );
+		}
+		while( ! ( file_exists( $abspath . '/wp-load.php' ) && file_exists( $abspath . '/wp-admin/' ) ) );
+	}
+	require_once $abspath . '/wp-load.php';
 }
 
 // Attempt to raise the PHP memory limit for cron event processing.
