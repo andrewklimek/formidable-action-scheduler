@@ -232,7 +232,6 @@ class FrmActionSchedulerCronController {
 		];
 		// error_log($url);
 		$timer = microtime(1);
-		error_log('ajax send started at ' . $timer );
 
 		// $options = [
 		// 	CURLOPT_URL				=> $url,

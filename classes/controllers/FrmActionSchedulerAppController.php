@@ -219,7 +219,6 @@ class FrmActionSchedulerAppController {
 		if ( empty( $entry ) ) return;
 
 		$action = FrmActionScheduler::get_action( $action_id );
-error_log(__FUNCTION__ .' 1');
 		// prep only for actions with Autoresponder settings
 		$autoresponder = FrmActionScheduler::get_autoresponder( $action );
 		if ( !empty( $autoresponder ) ) {
@@ -227,7 +226,6 @@ error_log(__FUNCTION__ .' 1');
 			if ( defined( 'DOING_FRM_DEFERRED_ACTIONS') ) {
 				error_log( "DOING_FRM_DEFERRED_ACTIONS was defined but it got an autoresponder settings... something not right");
 			}
-			error_log(__FUNCTION__ .' 2');
 
 			// action_conditions_met actually returns false if conditions are met.  it returns boolean "stop" value
 			if ( $recheck && FrmFormAction::action_conditions_met( $action, $entry ) ) {
@@ -249,7 +247,6 @@ error_log(__FUNCTION__ .' 1');
 				$sent_count++;
 			}
 		}
-		error_log(__FUNCTION__ .' 3');
 
 		// DO THE ACTION
 
@@ -260,7 +257,7 @@ error_log(__FUNCTION__ .' 1');
 		self::unload_hooks( $action->post_excerpt );
 		// Do the action
 		do_action( 'frm_trigger_' . $action->post_excerpt . '_action', $action, $entry, FrmForm::getOne( $entry->form_id ), 'create' );// TODO this event type wont be accurate and I dont think there's a way unless it is stored in the scheduled table
-
+		error_log("did action $action_id entry $entry_id");
 
 		// cleanup only for actions with Autoresponder settings
 		if ( !empty( $autoresponder ) ) {
