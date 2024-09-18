@@ -64,20 +64,26 @@ class FrmActionSchedulerAppController {
 	}
 
 
-	public static function defer_action( $action_id=0, $entry_id=0 ) {
+	public static function defer_action( $event = null, $action_id = 0, $entry_id = 0 ) {
 		static $deferred = [];
+
+		if ( $event == 'get_clean' ) {
+			$temp = $deferred;
+			$deferred = [];
+			return $temp;
+		}
+
 		if ( $action_id && $entry_id ) {
 			if ( ! $deferred ) {
 				// error_log("hooking send_deferred_async");
-				add_action( 'frm_after_create_entry', 'FrmActionSchedulerCronController::send_deferred_async', 30 );// trigger_create_actions is priority 20
-				add_action( 'frm_after_update_entry', 'FrmActionSchedulerCronController::send_deferred_async', 20 );// trigger_update_actions is priority 10
+				add_action( "frm_after_{$event}_entry", 'FrmActionSchedulerCronController::send_deferred_async', 21 );// trigger_update_actions is priority 10, trigger_create_actions is priority 20
 			}
 			// $entry_id = (int) $entry_id;
 			// if ( empty( $deferred[ $entry_id ] ) ) $deferred[ $entry_id ] = [];
 			// $deferred[ $entry_id ][] = $action_id;
 			$deferred[] = $action_id .'_'. $entry_id;
 		}
-		// error_log("deferred: " . var_export($deferred,1));
+
 		return $deferred;
 	}
 
@@ -167,20 +173,20 @@ class FrmActionSchedulerAppController {
 		$autoresponder = FrmActionScheduler::get_autoresponder( $action );
 		if ( ! $autoresponder ) {
 			if ( get_option('frm_action_scheduler_defer_all' ) ) {// defer and exit
-				self::defer_action( $action->ID, $entry->id );
+				self::defer_action( $event, $action->ID, $entry->id );
 			}
 			return;
 		}
 
 		if ( $autoresponder['do_default_trigger'] == 'yes' && get_option('frm_action_scheduler_defer_all' ) ) {// defer and continue to scheduling
-			self::defer_action( $action->ID, $entry->id );
+			self::defer_action( $event, $action->ID, $entry->id );
 		}
 
 		// don't bother scheduling updates that have sent their limit in the past - this seems like it could be optional behaviour
 		if ( $event == 'update' && $autoresponder['send_after_limit'] ) {
 			$sent_count = self::get_run_count( $entry->id, $action->ID );
 			if ( $sent_count >= $autoresponder['send_after_count'] ) {
-				error_log("dont schedule action {$action->ID} for entry {$entry->id} because it's already at its limit");
+				// error_log("dont schedule action {$action->ID} for entry {$entry->id} because it's already at its limit");
 				self::debug( sprintf( 'Not scheduling $s because we have already sent out the limit of %d.', $action->post_excerpt, $sent_count ), $action );
 				return;
 			}
@@ -229,7 +235,7 @@ class FrmActionSchedulerAppController {
 
 			// action_conditions_met actually returns false if conditions are met.  it returns boolean "stop" value
 			if ( $recheck && FrmFormAction::action_conditions_met( $action, $entry ) ) {
-				error_log("rechecking actions");
+				// error_log("rechecking actions");
 				self::debug( sprintf( 'Conditions for "%s" action for entry #%d not met. Halting.', $action->post_title, $entry->id, date( 'Y-m-d H:i:s' ) ), $action );
 				return;
 			}
@@ -240,7 +246,7 @@ class FrmActionSchedulerAppController {
 			if ( $autoresponder['send_after'] ) {
 				$sent_count = self::get_run_count( $entry_id, $action_id );
 				if ( $autoresponder['send_after_limit'] && $sent_count >= $autoresponder['send_after_count'] ) {
-					error_log("This shoudln't happen unless a form is updated while there's already an update-triggered action in queue");
+					// error_log("This shouldn't happen unless a form is updated while there's already an update-triggered action in queue");// TODO it was happening
 					self::debug( sprintf( 'Not triggering $s because we have already sent out the limit of %d.', $action->post_excerpt, $sent_count ), $action );
 					return;
 				}
@@ -257,7 +263,7 @@ class FrmActionSchedulerAppController {
 		self::unload_hooks( $action->post_excerpt );
 		// Do the action
 		do_action( 'frm_trigger_' . $action->post_excerpt . '_action', $action, $entry, FrmForm::getOne( $entry->form_id ), 'create' );// TODO this event type wont be accurate and I dont think there's a way unless it is stored in the scheduled table
-		error_log("did action $action_id entry $entry_id");
+		// error_log("did action $action_id entry $entry_id");
 
 		// cleanup only for actions with Autoresponder settings
 		if ( !empty( $autoresponder ) ) {
@@ -312,7 +318,7 @@ class FrmActionSchedulerAppController {
 			} elseif ( $new < $current ) {
 				$current = $new;
 			}
-			error_log( __FUNCTION__ ." current: $current new: $new");
+			// error_log( __FUNCTION__ ." current: $current new: $new");
 		}
 		return (int) $current;
 	}
@@ -321,17 +327,17 @@ class FrmActionSchedulerAppController {
 	public static function maybe_update_next_run() {
 		global $wpdb;
 		$new = self::track_lowest_timestamp();
-		error_log( __FUNCTION__ ." - new: $new");
+		// error_log( __FUNCTION__ ." - new: $new");
 		if ( ! $new ) return;
 		$current = FrmActionSchedulerCronController::get_next_run();
-		error_log( __FUNCTION__ ." - cur: $current");
+		// error_log( __FUNCTION__ ." - cur: $current");
 		if ( ! $current ) {
 			FrmActionSchedulerCronController::set_next_run();// option got clear, probably because nothing to schedule next last time, but safest to reset it.
 		} elseif ( $new < $current ) {
-			error_log("updating frm_action_scheduler_next_run because $new is < $current");
+			// error_log("updating frm_action_scheduler_next_run because $new is < $current");
 			FrmActionSchedulerCronController::set_next_run( $new );
 		} else {
-			error_log("not updating next run");
+			// error_log("not updating next run");
 		}
 	}
 
@@ -341,7 +347,7 @@ class FrmActionSchedulerAppController {
 	 * 
 	 * Note:
 	 * The action_entry combo is the unique index of this db table, so inserting will fail if there's already a scheduled item for the same entry & action.
-	 * This is probably ideal behaviour, so using IGNORE to fire warnign instead of error when trying and failing to insert duplicate key
+	 * This is probably ideal behaviour, so using IGNORE to fire warning instead of error when trying and failing to insert duplicate key
 	 */
 	public static function schedule( $action, $entry_id, $timestamp=null, $recheck_conditionals=true, $update=false ) {
 
@@ -365,6 +371,8 @@ class FrmActionSchedulerAppController {
 		];
 		$cmd = $update ? "REPLACE" : "INSERT IGNORE";
 		$wpdb->get_results( "{$cmd} INTO {$wpdb->prefix}frm_actionscheduler_queue (". implode(", ", array_keys($data)) .") VALUES ('". implode("', '", $data) ."');" );
+		error_log($wpdb->last_query);
+		error_log(var_export($wpdb->rows_affected,1));
 
 		do_action( 'frm_actionscheduler_after_schedule', $action, $entry_id, $timestamp );
 	}

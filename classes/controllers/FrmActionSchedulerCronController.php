@@ -64,24 +64,24 @@ class FrmActionSchedulerCronController {
 		}
 
 		$next_run = self::get_next_run();
-		error_log( 'frm_action_scheduler_next_run: ' . $next_run );
+		// error_log( 'frm_action_scheduler_next_run: ' . $next_run );
 		if ( ! $next_run ) {
-			error_log('exiting bc no next run!');
+			// error_log('exiting bc no next run!');
 			return;
 		}
 		if ( time() < $next_run ) {
-			error_log('exiting bc too soon');
+			// error_log('exiting bc too soon');
 			return;
 		}
 
-		error_log( __FUNCTION__ .' '. $_SERVER['REQUEST_URI'] .' '. var_export( $_REQUEST, 1 ) );
+		// error_log( __FUNCTION__ .' '. $_SERVER['REQUEST_URI'] .' '. var_export( $_REQUEST, 1 ) );
 
 		$lock = get_transient( 'frm_action_scheduler_running' );
-	error_log("retreived frm_action_scheduler_running: $lock");
+	// error_log("retreived frm_action_scheduler_running: $lock");
 		if ( $lock ) {
 			$time = (int) $lock;
 			if ( time() < $time + 600 ) {
-				error_log("frm_action_scheduler_running transient existed and wasnt over 10 mintues ago");
+				// error_log("frm_action_scheduler_running transient existed and wasnt over 10 mintues ago");
 				return;
 			}
 		}
@@ -90,7 +90,7 @@ class FrmActionSchedulerCronController {
 
 		set_transient( 'frm_action_scheduler_running', $lock );// any reason to set expiration?
 
-		error_log("set lock $lock and calling send_async");
+		// error_log("set lock $lock and calling send_async");
 
 		self::send_async( [ 'lock' => $lock ] );
 
@@ -116,10 +116,10 @@ class FrmActionSchedulerCronController {
 		if ( $timestamp ) {
 			$timestamp = (int) $timestamp;
 			$wpdb->get_results("UPDATE {$wpdb->prefix}options SET option_value = $timestamp WHERE option_name='frm_action_scheduler_next_run' AND ( option_value > $timestamp OR option_value = '')");
-			error_log("setting next run as $timestamp  - rows_affected: $wpdb->rows_affected");// secret property
+			// error_log("setting next run as $timestamp  - rows_affected: $wpdb->rows_affected");// secret property
 		} else {
 			$wpdb->get_results("UPDATE {$wpdb->prefix}options SET option_value = (SELECT time FROM {$wpdb->prefix}frm_actionscheduler_queue ORDER BY time LIMIT 1) WHERE option_name='frm_action_scheduler_next_run'");
-			error_log("setting next run based on schedule table - rows_affected: $wpdb->rows_affected");// secret property
+			// error_log("setting next run based on schedule table - rows_affected: $wpdb->rows_affected");// secret property
 		}
 	}
 
@@ -144,12 +144,12 @@ class FrmActionSchedulerCronController {
 		if ( ! $items ) return;
 
 		foreach ( $items as $item ) {
-			error_log( "doing: " . $item->action_entry );
+			// error_log( "doing: " . $item->action_entry );
 			$action_entry = explode( '_', $item->action_entry );
 			FrmActionSchedulerAppController::run_action( $action_entry[1], $action_entry[0], $item->recheck );// $entry_id, $action_id, $recheck
 		}
 		if ( empty( $actions ) ) {
-			error_log('do_queue: set next run');
+			// error_log('do_queue: set next run');
 			self::set_next_run();
 			// error_log('do_queue: delete frm_action_scheduler_running');
 			// delete_transient( 'frm_action_scheduler_running' );
@@ -158,7 +158,7 @@ class FrmActionSchedulerCronController {
 			$next_run = self::get_next_run();
 			if ( $next_run ) {
 				if ( $items[0]->time == $next_run ) {
-					error_log( 'frm_action_scheduler_next_run was correct' );
+					// error_log( 'frm_action_scheduler_next_run was correct' );
 				} else {
 					error_log( "frm_action_scheduler_next_run was mismatched: {$items[0]->time} vs $next_run" );
 				}
@@ -168,8 +168,8 @@ class FrmActionSchedulerCronController {
 
 	public static function ajax_do_queue() {
 		// error_log( current_action() );
-		error_log( __FUNCTION__ . " " . microtime(1) );
-		error_log( var_export( $_REQUEST, 1 ) );
+		// error_log( __FUNCTION__ . " " . microtime(1) );
+		// error_log( var_export( $_REQUEST, 1 ) );
 		if ( function_exists( 'fastcgi_finish_request' ) ) {
 			fastcgi_finish_request();
 		} elseif ( function_exists( 'litespeed_finish_request' ) ) {
@@ -184,9 +184,9 @@ class FrmActionSchedulerCronController {
 
 		if ( !empty( $_POST['lock'] ) ) {
 			$lock = get_transient( 'frm_action_scheduler_running' );
-			error_log("checking lock {$_POST['lock']} === $lock");
+			// error_log("checking lock {$_POST['lock']} === $lock");
 			if ( $lock !== $_POST['lock'] ) wp_die();
-			error_log("proceeding with ajax do queue");
+			// error_log("proceeding with ajax do queue");
 			define( 'DOING_FRM_ACTION_SCHEDULER_QUEUE', true );
 		}
 
@@ -199,8 +199,8 @@ class FrmActionSchedulerCronController {
 
 
 	public static function send_deferred_async() {
-		error_log(__FUNCTION__);
-		$actions = FrmActionSchedulerAppController::defer_action();
+		error_log(__FUNCTION__ .' '. current_filter() );
+		$actions = FrmActionSchedulerAppController::defer_action( null, null, 'get_clean' );// send truthy value so deferred items get cleared so they can't possibly be queued twice (like drafts which run frm_after_create_entry AND frm_after_update_entry)
 		if ( ! $actions ) return false;
 
 		$time = time() + 300;
@@ -210,9 +210,9 @@ class FrmActionSchedulerCronController {
 		}
 		$values = implode( ', ', $values );
 		global $wpdb;
-		$wpdb->get_results("INSERT INTO {$wpdb->prefix}frm_actionscheduler_queue VALUES $values");
-		// error_log($wpdb->last_query);
-		// error_log(var_export($wpdb->last_result,1));
+		$wpdb->get_results("INSERT IGNORE INTO {$wpdb->prefix}frm_actionscheduler_queue VALUES $values");
+		error_log($wpdb->last_query);
+		error_log(var_export($wpdb->rows_affected,1));
 
 		self::send_async( [ 'actions' => $actions, 'deferred' => 1 ] );
 	}
@@ -250,7 +250,7 @@ class FrmActionSchedulerCronController {
 
 		$result = wp_remote_post( $url, $args );
 
-		error_log( 'ajax send took ' . (microtime(1) - $timer) );
+		// error_log( 'ajax send took ' . (microtime(1) - $timer) );
 		return $result;
 	}
 
