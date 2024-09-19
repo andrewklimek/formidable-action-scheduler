@@ -64,10 +64,10 @@ class FrmActionSchedulerAppController {
 	}
 
 
-	public static function defer_action( $event = null, $action_id = 0, $entry_id = 0 ) {
+	public static function defer_action( $action_id = 0, $entry_id = 0, $get_clean = false ) {
 		static $deferred = [];
 
-		if ( $event == 'get_clean' ) {
+		if ( $get_clean ) {
 			$temp = $deferred;
 			$deferred = [];
 			return $temp;
@@ -76,7 +76,8 @@ class FrmActionSchedulerAppController {
 		if ( $action_id && $entry_id ) {
 			if ( ! $deferred ) {
 				// error_log("hooking send_deferred_async");
-				add_action( "frm_after_{$event}_entry", 'FrmActionSchedulerCronController::send_deferred_async', 21 );// trigger_update_actions is priority 10, trigger_create_actions is priority 20
+				add_action( "frm_after_update_entry", 'FrmActionSchedulerCronController::send_deferred_async', 11 );// trigger_update_actions is priority 10
+				add_action( "frm_after_create_entry", 'FrmActionSchedulerCronController::send_deferred_async', 21 );// trigger_create_actions is priority 20
 			}
 			// $entry_id = (int) $entry_id;
 			// if ( empty( $deferred[ $entry_id ] ) ) $deferred[ $entry_id ] = [];
@@ -173,13 +174,13 @@ class FrmActionSchedulerAppController {
 		$autoresponder = FrmActionScheduler::get_autoresponder( $action );
 		if ( ! $autoresponder ) {
 			if ( get_option('frm_action_scheduler_defer_all' ) ) {// defer and exit
-				self::defer_action( $event, $action->ID, $entry->id );
+				self::defer_action( $action->ID, $entry->id );
 			}
 			return;
 		}
 
 		if ( $autoresponder['do_default_trigger'] == 'yes' && get_option('frm_action_scheduler_defer_all' ) ) {// defer and continue to scheduling
-			self::defer_action( $event, $action->ID, $entry->id );
+			self::defer_action( $action->ID, $entry->id );
 		}
 
 		// don't bother scheduling updates that have sent their limit in the past - this seems like it could be optional behaviour
