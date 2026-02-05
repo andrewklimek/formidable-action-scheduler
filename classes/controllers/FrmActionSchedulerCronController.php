@@ -136,11 +136,11 @@ class FrmActionSchedulerCronController {
 			$where = "WHERE time <= '" . time() . "'";
 		}
 
-		error_log(__FUNCTION__);
+		//error_log(__FUNCTION__);
 		global $wpdb;
 		$items = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}frm_actionscheduler_queue $where ORDER BY time ASC LIMIT 30");
-		error_log( $wpdb->last_query );
-		error_log( "returned {$wpdb->num_rows} rows" );
+		//error_log( $wpdb->last_query );
+		//error_log( "returned {$wpdb->num_rows} rows" );
 		if ( ! $items ) return;
 
 		foreach ( $items as $item ) {
@@ -199,7 +199,7 @@ class FrmActionSchedulerCronController {
 
 
 	public static function send_deferred_async() {
-		error_log(__FUNCTION__ .' '. current_filter() );
+		// error_log(__FUNCTION__ .' '. current_filter() );
 		$actions = FrmActionSchedulerAppController::defer_action( null, null, 'get_clean' );// send truthy value so deferred items get cleared so they can't possibly be queued twice (like drafts which run frm_after_create_entry AND frm_after_update_entry)
 		if ( ! $actions ) return false;
 
@@ -211,8 +211,8 @@ class FrmActionSchedulerCronController {
 		$values = implode( ', ', $values );
 		global $wpdb;
 		$wpdb->get_results("INSERT IGNORE INTO {$wpdb->prefix}frm_actionscheduler_queue VALUES $values");
-		error_log($wpdb->last_query);
-		error_log(var_export($wpdb->rows_affected,1));
+		// error_log($wpdb->last_query);
+		// error_log(var_export($wpdb->rows_affected,1));
 
 		self::send_async( [ 'actions' => $actions, 'deferred' => 1 ] );
 	}

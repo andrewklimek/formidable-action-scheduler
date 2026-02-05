@@ -30,6 +30,8 @@ class FrmActionSchedulerLog {
 			return;
 		}
 		@file_put_contents( $this->_get_log_file_name(), date( '[H:i:s] ' ) . $message . "\n", FILE_APPEND );
+
+		$this->_cleanup_old_logs();
 	}
 
 	public function get_content( $url ) {
@@ -110,7 +112,41 @@ class FrmActionSchedulerLog {
 	private function _get_log_file_root( $base = 'basedir' ) {
 		$uploads = wp_upload_dir();
 		$root = trailingslashit( $uploads[ $base ] );
-		$root .= 'formidable-autoresponder/logs/';
-		return apply_filters( 'formidable_autoresponder_logroot', $root );
+		$root .= 'formidable/action-scheduler-logs/';
+		// $root = apply_filters( 'formidable_autoresponder_logroot', $root );
+		return $root;
+	}
+
+	/**
+	 * Clean up log files older than a specified number of days or exceeding a maximum file count.
+	 *
+	 * @return void
+	 */
+	private function _cleanup_old_logs() {
+		// Configurable settings
+		$max_days = defined( 'FRM_ACTION_SCHEDULER_LOG_RETENTION_DAYS' ) ? FRM_ACTION_SCHEDULER_LOG_RETENTION_DAYS : 30;
+		$max_files = defined( 'FRM_ACTION_SCHEDULER_MAX_LOG_FILES' ) ? FRM_ACTION_SCHEDULER_MAX_LOG_FILES : 1000;
+
+		$root = $this->_get_log_file_root();
+		$files = glob( $root . '*.log' ); // Match all .log files in the directory
+
+		if ( empty( $files ) ) {
+			return;
+		}
+
+		// Sort files by modification time, newest first
+		usort( $files, function( $a, $b ) {
+			return filemtime( $b ) - filemtime( $a );
+		});
+
+		$cutoff_time = strtotime( '-' . $max_days . ' days' );
+		$file_count = count( $files );
+
+		foreach ( $files as $index => $file ) {
+			// Delete if older than $max_days or exceeds $max_files
+			if ( filemtime( $file ) < $cutoff_time || $index >= $max_files ) {
+				@unlink( $file );
+			}
+		}
 	}
 }

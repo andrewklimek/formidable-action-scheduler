@@ -76,8 +76,16 @@ class FrmActionSchedulerAppController {
 		if ( $action_id && $entry_id ) {
 			if ( ! $deferred ) {
 				// error_log("hooking send_deferred_async");
-				add_action( "frm_after_update_entry", 'FrmActionSchedulerCronController::send_deferred_async', 11 );// trigger_update_actions is priority 10
-				add_action( "frm_after_create_entry", 'FrmActionSchedulerCronController::send_deferred_async', 21 );// trigger_create_actions is priority 20
+				if ( doing_filter( 'frm_after_update_entry' ) ) {
+					add_action( 'frm_after_update_entry', 'FrmActionSchedulerCronController::send_deferred_async', 11 );// trigger_update_actions is priority 10
+					// poo('adding async to frm_after_update_entry');
+				} elseif ( doing_filter( 'frm_after_create_entry' ) ) {
+					add_action( 'frm_after_create_entry', 'FrmActionSchedulerCronController::send_deferred_async', 21 );// trigger_create_actions is priority 20
+					// poo('adding async to frm_after_create_entry');
+				} else {
+					add_action( 'shutdown', 'FrmActionSchedulerCronController::send_deferred_async' );
+					// poo('adding async to shutdown');
+				}
 			}
 			// $entry_id = (int) $entry_id;
 			// if ( empty( $deferred[ $entry_id ] ) ) $deferred[ $entry_id ] = [];
@@ -235,14 +243,17 @@ class FrmActionSchedulerAppController {
 			}
 
 			// action_conditions_met actually returns false if conditions are met.  it returns boolean "stop" value
-			if ( $recheck && FrmFormAction::action_conditions_met( $action, $entry ) ) {
-				// error_log("rechecking actions");
-				self::debug( sprintf( 'Conditions for "%s" action for entry #%d not met. Halting.', $action->post_title, $entry->id, date( 'Y-m-d H:i:s' ) ), $action );
-				return;
+			if ( $recheck ) {
+				if ( FrmFormAction::action_conditions_met( $action, $entry ) ) {
+					// error_log("rechecking actions");
+					self::debug( sprintf( 'Conditions for "%s" action for entry #%d not met. Halting.', $action->post_title, $entry->id, date( 'Y-m-d H:i:s' ) ), $action );
+					return;
+				}
+				self::debug( sprintf( 'Conditions for "%s" action for entry #%d met. Proceeding.', $action->post_title, $entry->id, date( 'Y-m-d H:i:s' ) ), $action );
+			} else {
+				self::debug( sprintf( 'Condition check not required for "%s" action for entry #%d. Proceeding.', $action->post_title, $entry->id, date( 'Y-m-d H:i:s' ) ), $action );
 			}
 
-			self::debug( sprintf( 'Conditions for "%s" action for entry #%d met. Proceeding.', $action->post_title, $entry->id, date( 'Y-m-d H:i:s' ) ), $action );
-			
 			$sent_count = null;
 			if ( $autoresponder['send_after'] ) {
 				$sent_count = self::get_run_count( $entry_id, $action_id );
@@ -357,7 +368,7 @@ class FrmActionSchedulerAppController {
 			$action = $action->ID;
 		}
 		
-		error_log(__FUNCTION__ . "() action $action entry: $entry_id");
+		//error_log(__FUNCTION__ . "() action $action entry: $entry_id");
 
 		// tracking time stamp VS doign cron when its always updated...not sure if this is the best way or overly complicated
 		if ( $timestamp && ! defined( 'DOING_FRM_ACTION_SCHEDULER_QUEUE' ) ) self::track_lowest_timestamp( $timestamp );
@@ -372,8 +383,8 @@ class FrmActionSchedulerAppController {
 		];
 		$cmd = $update ? "REPLACE" : "INSERT IGNORE";
 		$wpdb->get_results( "{$cmd} INTO {$wpdb->prefix}frm_actionscheduler_queue (". implode(", ", array_keys($data)) .") VALUES ('". implode("', '", $data) ."');" );
-		error_log($wpdb->last_query);
-		error_log(var_export($wpdb->rows_affected,1));
+		//error_log($wpdb->last_query);
+		//error_log(var_export($wpdb->rows_affected,1));
 
 		do_action( 'frm_actionscheduler_after_schedule', $action, $entry_id, $timestamp );
 	}
